@@ -4,75 +4,56 @@ from pydantic import BaseModel
 
 from chatbot_engine import processar_chatbot
 
+# =========================================
+# FASTAPI
+# =========================================
+
 app = FastAPI()
-
-
 
 # =========================================
 # CORS
 # =========================================
 
 app.add_middleware(
-
     CORSMiddleware,
-
     allow_origins=["*"],
-
     allow_credentials=True,
-
     allow_methods=["*"],
-
-    allow_headers=["*"]
-
+    allow_headers=["*"],
 )
-
-
 
 # =========================================
 # MODELO REQUEST
 # =========================================
 
 class ChatRequest(BaseModel):
-
     mensagem: str
-
     session_id: str
 
 
-
 # =========================================
-# ROTA PRINCIPAL
+# ROTA RAIZ
 # =========================================
 
 @app.get("/")
-
 def home():
 
     return {
-
         "status": "online",
-
-        "sistema":
-            "RA Corretor de Imóveis"
-
+        "sistema": "RA Corretor de Imóveis"
     }
 
 
-
 # =========================================
-# CHAT IA
+# CHATBOT
 # =========================================
 
 @app.post("/chat")
-
-async def chat(data: ChatRequest):
+async def chat(dados: ChatRequest):
 
     resposta = await processar_chatbot(
-
-        data.mensagem,
-
-        data.session_id
-
+        dados.mensagem,
+        dados.session_id
     )
 
     return resposta
