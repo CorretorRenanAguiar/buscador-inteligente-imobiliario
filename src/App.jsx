@@ -1,7 +1,7 @@
 import Header from "./componentes/Header"
 import Busca from "./componentes/Busca"
 import CookieBanner from "./componentes/CookieBanner"
-import ChatBot from "./componentes/ChatBot"
+import ChatBot from "./componentes/Chatbot"
 
 function App() {
 
