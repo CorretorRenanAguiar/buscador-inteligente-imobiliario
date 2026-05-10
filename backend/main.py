@@ -48,7 +48,7 @@ except Exception as erro:
 
 
 # =========================================
-# REQUEST
+# REQUEST MODEL
 # =========================================
 
 class ChatRequest(BaseModel):
