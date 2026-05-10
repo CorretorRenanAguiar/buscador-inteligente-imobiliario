@@ -2,12 +2,13 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+import traceback
+
 # =========================================
 # FASTAPI
 # =========================================
 
 app = FastAPI()
-
 
 # =========================================
 # CORS
@@ -21,23 +22,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
-# =========================================
-# ROTA RAIZ
-# =========================================
-
-@app.get("/")
-def home():
-
-    return {
-        "status": "online",
-        "sistema": "RA Corretor de Imóveis"
-    }
-
-
 # =========================================
 # IMPORT CHATBOT
 # =========================================
+
+CHATBOT_ERRO = None
 
 try:
 
@@ -45,16 +34,21 @@ try:
 
 except Exception as erro:
 
-    print(
-        "ERRO CHATBOT:",
-        erro
-    )
+    CHATBOT_ERRO = str(erro)
+
+    print("\n===================================")
+    print("ERRO AO IMPORTAR CHATBOT_ENGINE")
+    print("===================================")
+
+    traceback.print_exc()
+
+    print("===================================\n")
 
     processar_chatbot = None
 
 
 # =========================================
-# REQUEST MODEL
+# REQUEST
 # =========================================
 
 class ChatRequest(BaseModel):
@@ -65,7 +59,31 @@ class ChatRequest(BaseModel):
 
 
 # =========================================
-# CHATBOT
+# HOME
+# =========================================
+
+@app.get("/")
+def home():
+
+    return {
+
+        "status": "online",
+
+        "sistema": "RA Corretor de Imóveis",
+
+        "chatbot_carregado":
+
+            processar_chatbot is not None,
+
+        "erro_chatbot":
+
+            CHATBOT_ERRO
+
+    }
+
+
+# =========================================
+# CHAT
 # =========================================
 
 @app.post("/chat")
@@ -81,18 +99,21 @@ async def chat(dados: ChatRequest):
 
             "resposta":
 
-                "⚠️ O sistema inteligente "
+                "⚠️ O chatbot não conseguiu "
 
-                "não conseguiu iniciar.",
+                "ser iniciado.",
 
-            "classificacao":
-                "erro",
+            "erro":
+
+                CHATBOT_ERRO,
 
             "score":
-                0
+                0,
+
+            "classificacao":
+                "erro"
 
         }
-
 
     # =====================================
     # PROCESSAR
@@ -110,26 +131,20 @@ async def chat(dados: ChatRequest):
 
         return resposta
 
+    except Exception:
 
-    except Exception as erro:
-
-        print(
-            "ERRO CHAT:",
-            erro
-        )
+        traceback.print_exc()
 
         return {
 
             "resposta":
 
-                "⚠️ Ocorreu um erro "
-
-                "ao processar sua solicitação.",
-
-            "classificacao":
-                "erro",
+                "⚠️ Erro interno no chatbot.",
 
             "score":
-                0
+                0,
+
+            "classificacao":
+                "erro"
 
         }
