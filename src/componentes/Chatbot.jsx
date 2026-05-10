@@ -1,380 +1,746 @@
-import { useState } from "react"
+import { useState, useEffect, useRef } from "react"
 
-function ChatBot() {
+export default function ChatBot() {
 
-  const [message, setMessage] = useState("")
-  const [minimized, setMinimized] = useState(false)
+    const [aberto, setAberto] = useState(false)
 
-  const [messages, setMessages] = useState([
-    {
-      sender: "bot",
-      text:
-        "Olá 👋 Sou a assistente virtual da RA Inteligência Imobiliária. Posso ajudar a encontrar um imóvel ideal para seu perfil."
-    }
-  ])
+    const [mensagens, setMensagens] = useState([])
 
+    const [input, setInput] = useState("")
 
-  function sendMessage() {
 
-    if (message.trim() === "") return
 
-    const userMessage = {
-      sender: "user",
-      text: message
-    }
+    const mensagensRef = useRef(null)
 
-    const botResponse = {
-      sender: "bot",
-      text:
-        "Perfeito. Estou analisando imóveis compatíveis com seu perfil."
-    }
 
-    setMessages([
-      ...messages,
-      userMessage,
-      botResponse
-    ])
 
-    setMessage("")
-  }
+    const [sessao] = useState(
 
+        Date.now().toString()
 
-  return (
+    )
 
-    <>
 
-      {/* BOTÃO RESTAURAR */}
 
-      {
-        minimized && (
+    // =====================================
+    // AUTO SCROLL
+    // =====================================
 
-          <button
-            onClick={() => setMinimized(false)}
+    useEffect(() => {
 
-            style={{
-              position: "fixed",
+        if (mensagensRef.current) {
 
-              bottom: "95px",
+            mensagensRef.current.scrollTop =
 
-              right: "25px",
+                mensagensRef.current.scrollHeight
 
-              backgroundColor: "#d4a017",
+        }
 
-              color: "#ffffff",
+    }, [mensagens])
 
-              border: "none",
 
-              borderRadius: "18px",
 
-              padding: "16px 22px",
+    // =====================================
+    // ENVIAR
+    // =====================================
 
-              cursor: "pointer",
+    async function enviarMensagem(texto) {
 
-              fontWeight: "bold",
+        if (!texto.trim()) return
 
-              zIndex: 99999,
 
-              boxShadow:
-                "0px 10px 25px rgba(0,0,0,0.25)"
-            }}
-          >
-            💬 Fale com o corretor
-          </button>
 
-        )
-      }
+        const novasMensagens = [
 
+            ...mensagens,
 
+            {
 
-      {/* CHAT */}
+                autor: "usuario",
 
-      {
-        !minimized && (
+                texto
 
-          <div
-            style={{
-              position: "fixed",
+            }
 
-              right: "25px",
+        ]
 
-              bottom: "90px",
 
-              width: "360px",
 
-              height: "580px",
+        setMensagens(novasMensagens)
 
-              backgroundColor: "#ffffff",
+        setInput("")
 
-              borderRadius: "24px",
 
-              overflow: "hidden",
 
-              boxShadow:
-                "0px 20px 45px rgba(0,0,0,0.22)",
+        try {
 
-              zIndex: 99999,
+            const resposta = await fetch(
 
-              display: "flex",
+                "http://127.0.0.1:8000/chat",
 
-              flexDirection: "column"
-            }}
-          >
+                {
 
-            {/* HEADER */}
+                    method: "POST",
 
-            <div
-              style={{
-                background:
-                  "linear-gradient(135deg, #0f172a, #1e293b)",
+                    headers: {
 
-                padding: "18px 20px",
+                        "Content-Type":
+                            "application/json"
 
-                display: "flex",
+                    },
 
-                justifyContent: "space-between",
+                    body: JSON.stringify({
 
-                alignItems: "center"
-              }}
-            >
+                        mensagem: texto,
 
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "14px"
-                }}
-              >
+                        session_id: sessao
 
-                <div
-                  style={{
-                    width: "54px",
+                    })
 
-                    height: "54px",
-
-                    borderRadius: "50%",
-
-                    backgroundColor: "#d4a017",
-
-                    display: "flex",
-
-                    justifyContent: "center",
-
-                    alignItems: "center",
-
-                    fontSize: "24px"
-                  }}
-                >
-                  👩
-                </div>
-
-
-                <div>
-
-                  <h3
-                    style={{
-                      margin: 0,
-                      color: "#ffffff"
-                    }}
-                  >
-                    Assistente Virtual
-                  </h3>
-
-                  <p
-                    style={{
-                      margin: 0,
-
-                      color: "#cbd5e1",
-
-                      fontSize: "13px"
-                    }}
-                  >
-                    Online agora
-                  </p>
-
-                </div>
-
-              </div>
-
-
-
-              {/* BOTÃO MINIMIZAR */}
-
-              <button
-                onClick={() => setMinimized(true)}
-
-                style={{
-                  background: "transparent",
-
-                  border: "none",
-
-                  color: "#ffffff",
-
-                  fontSize: "26px",
-
-                  cursor: "pointer",
-
-                  lineHeight: 1
-                }}
-              >
-                −
-              </button>
-
-            </div>
-
-
-
-            {/* MENSAGENS */}
-
-            <div
-              style={{
-                flex: 1,
-
-                backgroundColor: "#f8fafc",
-
-                padding: "20px",
-
-                overflowY: "auto"
-              }}
-            >
-
-              {
-                messages.map((msg, index) => (
-
-                  <div
-                    key={index}
-
-                    style={{
-                      display: "flex",
-
-                      justifyContent:
-                        msg.sender === "user"
-                          ? "flex-end"
-                          : "flex-start",
-
-                      marginBottom: "16px"
-                    }}
-                  >
-
-                    <div
-                      style={{
-                        backgroundColor:
-                          msg.sender === "user"
-                            ? "#d4a017"
-                            : "#ffffff",
-
-                        color:
-                          msg.sender === "user"
-                            ? "#ffffff"
-                            : "#111827",
-
-                        padding: "14px 16px",
-
-                        borderRadius: "16px",
-
-                        maxWidth: "80%",
-
-                        lineHeight: "1.6",
-
-                        boxShadow:
-                          "0px 4px 10px rgba(0,0,0,0.05)"
-                      }}
-                    >
-                      {msg.text}
-                    </div>
-
-                  </div>
-
-                ))
-              }
-
-            </div>
-
-
-
-            {/* INPUT */}
-
-            <div
-              style={{
-                padding: "16px",
-
-                borderTop:
-                  "1px solid #e5e7eb",
-
-                display: "flex",
-
-                gap: "10px"
-              }}
-            >
-
-              <input
-                type="text"
-
-                placeholder="Digite sua mensagem..."
-
-                value={message}
-
-                onChange={(e) =>
-                  setMessage(e.target.value)
                 }
 
-                onKeyDown={(e) => {
-
-                  if (e.key === "Enter") {
-                    sendMessage()
-                  }
-
-                }}
-
-                style={{
-                  flex: 1,
-
-                  padding: "15px",
-
-                  borderRadius: "14px",
-
-                  border:
-                    "1px solid #d1d5db",
-
-                  outline: "none",
-
-                  fontSize: "15px"
-                }}
-              />
+            )
 
 
-              <button
-                onClick={sendMessage}
 
-                style={{
-                  backgroundColor: "#d4a017",
+            const dados = await resposta.json()
 
-                  color: "#ffffff",
 
-                  border: "none",
 
-                  padding: "0px 18px",
+            setMensagens([
 
-                  borderRadius: "14px",
+                ...novasMensagens,
 
-                  cursor: "pointer",
+                {
 
-                  fontWeight: "bold"
-                }}
-              >
-                Enviar
-              </button>
+                    autor: "bot",
 
-            </div>
+                    texto: dados.resposta,
 
-          </div>
+                    opcoes: dados.opcoes || []
 
-        )
-      }
+                }
 
-    </>
+            ])
 
-  )
+
+
+            // =================================
+            // WHATSAPP
+            // =================================
+
+            if (
+
+                dados.abrir_whatsapp
+
+            ) {
+
+                const mensagemZap =
+
+                    encodeURIComponent(
+
+                        dados.whatsapp_texto
+
+                    )
+
+
+
+                window.open(
+
+                    `https://wa.me/5532998148333?text=${mensagemZap}`,
+
+                    "_blank"
+
+                )
+
+            }
+
+
+
+        } catch (erro) {
+
+            console.log(erro)
+
+        }
+
+    }
+
+
+
+    // =====================================
+    // INICIAR CHAT
+    // =====================================
+
+    function abrirChat() {
+
+        setAberto(true)
+
+
+
+        if (mensagens.length === 0) {
+
+            enviarMensagem("iniciar")
+
+        }
+
+    }
+
+
+
+    return (
+
+        <>
+
+            {/* ================================= */}
+            {/* BOTÃO FLUTUANTE */}
+            {/* ================================= */}
+
+            {
+
+                !aberto && (
+
+                    <button
+
+                        onClick={abrirChat}
+
+                        style={{
+
+                            position: "fixed",
+
+                            bottom: "20px",
+
+                            right: "20px",
+
+                            width: "65px",
+
+                            height: "65px",
+
+                            borderRadius: "50%",
+
+                            border: "none",
+
+                            background: "#d4a017",
+
+                            color: "#fff",
+
+                            fontSize: "28px",
+
+                            cursor: "pointer",
+
+                            zIndex: 99999,
+
+                            boxShadow:
+
+                                "0 6px 20px rgba(0,0,0,0.3)"
+
+                        }}
+
+                    >
+
+                        💬
+
+                    </button>
+
+                )
+
+            }
+
+
+
+            {/* ================================= */}
+            {/* CHAT */}
+            {/* ================================= */}
+
+            {
+
+                aberto && (
+
+                    <div
+
+                        style={{
+
+                            position: "fixed",
+
+                            bottom: "20px",
+
+                            right: "20px",
+
+                            width: "350px",
+
+                            height: "520px",
+
+                            background: "#fff",
+
+                            borderRadius: "18px",
+
+                            overflow: "hidden",
+
+                            zIndex: 99999,
+
+                            display: "flex",
+
+                            flexDirection: "column",
+
+                            boxShadow:
+
+                                "0 12px 35px rgba(0,0,0,0.25)",
+
+                            animation:
+
+                                "fadeIn 0.2s ease"
+
+                        }}
+
+                    >
+
+                        {/* HEADER */}
+
+                        <div
+
+                            style={{
+
+                                background: "#08142b",
+
+                                color: "#fff",
+
+                                padding: "14px",
+
+                                display: "flex",
+
+                                justifyContent:
+
+                                    "space-between",
+
+                                alignItems: "center"
+
+                            }}
+
+                        >
+
+                            <div>
+
+                                <div
+
+                                    style={{
+
+                                        fontWeight: "bold",
+
+                                        fontSize: "15px"
+
+                                    }}
+
+                                >
+
+                                    RA Inteligência Imobiliária
+
+                                </div>
+
+
+
+                                <div
+
+                                    style={{
+
+                                        fontSize: "12px",
+
+                                        opacity: 0.8
+
+                                    }}
+
+                                >
+
+                                    Atendimento Inteligente
+
+                                </div>
+
+                            </div>
+
+
+
+                            {/* MINIMIZAR */}
+
+                            <button
+
+                                onClick={() =>
+
+                                    setAberto(false)
+
+                                }
+
+                                style={{
+
+                                    background: "transparent",
+
+                                    border: "none",
+
+                                    color: "#fff",
+
+                                    fontSize: "24px",
+
+                                    cursor: "pointer"
+
+                                }}
+
+                            >
+
+                                −
+
+                            </button>
+
+                        </div>
+
+
+
+                        {/* MENSAGENS */}
+
+                        <div
+
+                            ref={mensagensRef}
+
+                            style={{
+
+                                flex: 1,
+
+                                overflowY: "auto",
+
+                                padding: "14px",
+
+                                background: "#f4f4f4",
+
+                                display: "flex",
+
+                                flexDirection: "column",
+
+                                gap: "12px"
+
+                            }}
+
+                        >
+
+                            {
+
+                                mensagens.map(
+
+                                    (
+
+                                        msg,
+
+                                        index
+
+                                    ) => (
+
+                                        <div
+
+                                            key={index}
+
+                                            style={{
+
+                                                display: "flex",
+
+                                                flexDirection: "column",
+
+                                                alignItems:
+
+                                                    msg.autor === "bot"
+
+                                                    ? "flex-start"
+
+                                                    : "flex-end"
+
+                                            }}
+
+                                        >
+
+                                            {/* BOLHA */}
+
+                                            <div
+
+                                                style={{
+
+                                                    background:
+
+                                                        msg.autor === "bot"
+
+                                                        ? "#fff"
+
+                                                        : "#d4a017",
+
+                                                    color:
+
+                                                        msg.autor === "bot"
+
+                                                        ? "#000"
+
+                                                        : "#fff",
+
+                                                    padding: "12px",
+
+                                                    borderRadius: "14px",
+
+                                                    maxWidth: "85%",
+
+                                                    whiteSpace: "pre-line",
+
+                                                    fontSize: "14px",
+
+                                                    lineHeight: "1.4"
+
+                                                }}
+
+                                            >
+
+                                                {
+
+                                                    msg.texto
+
+                                                }
+
+                                            </div>
+
+
+
+                                            {/* BOTÕES */}
+
+                                            {
+
+                                                msg.opcoes?.length > 0 && (
+
+                                                    <div
+
+                                                        style={{
+
+                                                            display: "flex",
+
+                                                            flexWrap: "wrap",
+
+                                                            gap: "8px",
+
+                                                            marginTop: "8px"
+
+                                                        }}
+
+                                                    >
+
+                                                        {
+
+                                                            msg.opcoes.map(
+
+                                                                (
+
+                                                                    opcao,
+
+                                                                    i
+
+                                                                ) => (
+
+                                                                    <button
+
+                                                                        key={i}
+
+                                                                        onClick={() =>
+
+                                                                            enviarMensagem(
+
+                                                                                opcao
+
+                                                                            )
+
+                                                                        }
+
+                                                                        style={{
+
+                                                                            background:
+
+                                                                                "#d4a017",
+
+                                                                            color:
+
+                                                                                "#fff",
+
+                                                                            border:
+
+                                                                                "none",
+
+                                                                            borderRadius:
+
+                                                                                "10px",
+
+                                                                            padding:
+
+                                                                                "8px 12px",
+
+                                                                            cursor:
+
+                                                                                "pointer",
+
+                                                                            fontSize:
+
+                                                                                "13px"
+
+                                                                        }}
+
+                                                                    >
+
+                                                                        {
+
+                                                                            opcao
+
+                                                                        }
+
+                                                                    </button>
+
+                                                                )
+
+                                                            )
+
+                                                        }
+
+                                                    </div>
+
+                                                )
+
+                                            }
+
+                                        </div>
+
+                                    )
+
+                                )
+
+                            }
+
+                        </div>
+
+
+
+                        {/* INPUT */}
+
+                        <div
+
+                            style={{
+
+                                borderTop:
+
+                                    "1px solid #ddd",
+
+                                padding: "10px",
+
+                                display: "flex",
+
+                                gap: "10px",
+
+                                background: "#fff"
+
+                            }}
+
+                        >
+
+                            <input
+
+                                type="text"
+
+                                value={input}
+
+                                placeholder="Digite sua mensagem..."
+
+                                onChange={(e) =>
+
+                                    setInput(
+
+                                        e.target.value
+
+                                    )
+
+                                }
+
+                                onKeyDown={(e) => {
+
+                                    if (
+
+                                        e.key === "Enter"
+
+                                    ) {
+
+                                        enviarMensagem(
+
+                                            input
+
+                                        )
+
+                                    }
+
+                                }}
+
+                                style={{
+
+                                    flex: 1,
+
+                                    padding: "12px",
+
+                                    borderRadius: "10px",
+
+                                    border:
+
+                                        "1px solid #ccc",
+
+                                    outline: "none",
+
+                                    fontSize: "14px"
+
+                                }}
+
+                            />
+
+
+
+                            <button
+
+                                onClick={() =>
+
+                                    enviarMensagem(
+
+                                        input
+
+                                    )
+
+                                }
+
+                                style={{
+
+                                    background: "#d4a017",
+
+                                    color: "#fff",
+
+                                    border: "none",
+
+                                    padding:
+
+                                        "0 16px",
+
+                                    borderRadius: "10px",
+
+                                    cursor: "pointer",
+
+                                    fontWeight: "bold"
+
+                                }}
+
+                            >
+
+                                ➤
+
+                            </button>
+
+                        </div>
+
+                    </div>
+
+                )
+
+            }
+
+        </>
+
+    )
 
 }
-
-export default ChatBot
