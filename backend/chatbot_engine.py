@@ -6,11 +6,13 @@ import requests
 import re
 
 # ============================================
-# CONFIGURAÇÕES
+# CONFIGURAÇÕES Z-API
 # ============================================
 
 ZAPI_INSTANCE = "3F2EFD4EDB9BB294D6392E60CA768835"
+
 ZAPI_TOKEN = "6F1EA3F8D36CC67014A3B84B"
+
 ZAPI_CLIENT_TOKEN = "F5de8d99a8ed846b6a50576a80f6240acS"
 
 NUMERO_CORRETOR = "5532998148333"
@@ -34,7 +36,13 @@ PALAVRAS_PERMUTA = [
     "aceita veiculo",
     "aceita imóvel",
     "aceita imovel",
-    "aceita terreno"
+    "aceita terreno",
+    "aceitar carro",
+    "aceitar veículo",
+    "aceitar veiculo",
+    "aceitar imóvel",
+    "aceitar imovel",
+    "aceitar terreno"
 
 ]
 
@@ -90,7 +98,7 @@ def detectar_permuta(texto):
     return False
 
 # ============================================
-# GERAR SCORE
+# CALCULAR SCORE
 # ============================================
 
 def calcular_score(dados):
@@ -101,22 +109,39 @@ def calcular_score(dados):
 
     faixa = dados.get("faixa_valor", "").lower()
 
+    tipo = dados.get("tipo_imovel", "").lower()
+
     if "invest" in objetivo:
+
         score += 4
 
     if "1 milhão" in faixa:
+
         score += 5
 
     if "500 mil" in faixa:
+
         score += 3
 
     if dados.get("permuta"):
+
         score += 5
+
+    if tipo in [
+
+        "fazenda",
+        "chácara",
+        "chacara",
+        "granja"
+
+    ]:
+
+        score += 3
 
     return score
 
 # ============================================
-# CLASSIFICAR PERFIL
+# CLASSIFICAÇÃO DE PERFIL
 # ============================================
 
 def classificar_perfil(dados):
@@ -125,7 +150,16 @@ def classificar_perfil(dados):
 
     objetivo = dados.get("objetivo", "").lower()
 
-    if tipo in ["fazenda", "sítio", "sitio", "granja", "chácara", "chacara"]:
+    if tipo in [
+
+        "fazenda",
+        "sítio",
+        "sitio",
+        "granja",
+        "chácara",
+        "chacara"
+
+    ]:
 
         return "Rural"
 
@@ -133,7 +167,7 @@ def classificar_perfil(dados):
 
         return "Investidor"
 
-    if "lançamento" in tipo:
+    if tipo == "lançamento":
 
         return "Lançamento"
 
@@ -164,8 +198,8 @@ async def processar_chatbot(mensagem, session_id):
             "mensagem":
 
                 "Olá 👋\n\n"
-                "Sou assistente virtual imobiliário de Renan Aguiar.\n\n"
-                "Vou fazer algumas perguntas rápidas para entender o imóvel ideal para você 😊\n\n"
+                "Sou a assistente virtual imobiliária de Renan Aguiar.\n\n"
+                "Vou entender rapidamente o perfil do imóvel que você procura 😊\n\n"
                 "Qual é o seu objetivo?",
 
             "opcoes": [
@@ -173,7 +207,7 @@ async def processar_chatbot(mensagem, session_id):
                 "Comprar",
                 "Alugar",
                 "Investir",
-                "Sou corretor"
+                "Sou corretor/parceiro"
 
             ]
 
@@ -479,7 +513,12 @@ async def processar_chatbot(mensagem, session_id):
     # WHATSAPP
     # ========================================
 
-    if etapa in ["whatsapp", "whatsapp_permuta"]:
+    if etapa in [
+
+        "whatsapp",
+        "whatsapp_permuta"
+
+    ]:
 
         whatsapp = re.sub(r"\D", "", mensagem)
 
@@ -493,23 +532,32 @@ async def processar_chatbot(mensagem, session_id):
 
 🚨 NOVO LEAD IMOBILIÁRIO
 
-👤 Perfil: {perfil}
+👤 Perfil:
+{perfil}
 
-🎯 Objetivo: {sessao.get('objetivo')}
+🎯 Objetivo:
+{sessao.get('objetivo')}
 
-🏠 Tipo imóvel: {sessao.get('tipo_imovel')}
+🏠 Tipo imóvel:
+{sessao.get('tipo_imovel')}
 
-🛏 Quartos: {sessao.get('quartos', 'Não informado')}
+🛏 Quartos:
+{sessao.get('quartos', 'Não informado')}
 
-🌱 Objetivo rural: {sessao.get('objetivo_rural', 'Não informado')}
+🌱 Objetivo rural:
+{sessao.get('objetivo_rural', 'Não informado')}
 
-📏 Área/Hectares: {sessao.get('hectares', 'Não informado')}
+📏 Área/Hectares:
+{sessao.get('hectares', 'Não informado')}
 
-📍 Região: {sessao.get('regiao')}
+📍 Região:
+{sessao.get('regiao')}
 
-💰 Faixa valor: {sessao.get('faixa_valor')}
+💰 Faixa valor:
+{sessao.get('faixa_valor')}
 
-🔁 Permuta: {'Sim' if sessao.get('permuta') else 'Não'}
+🔁 Permuta:
+{'Sim' if sessao.get('permuta') else 'Não'}
 
 📱 WhatsApp cliente:
 {whatsapp}
