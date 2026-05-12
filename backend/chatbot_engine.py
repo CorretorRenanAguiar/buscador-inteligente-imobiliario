@@ -1,3 +1,7 @@
+# ============================================
+# chatbot_engine.py
+# ============================================
+
 import os
 import re
 import requests
@@ -5,20 +9,18 @@ import requests
 from dotenv import load_dotenv
 
 # ============================================
-# CARREGAR VARIÁVEIS .ENV
+# CARREGAR .ENV
 # ============================================
 
 load_dotenv()
 
 # ============================================
-# CONFIGURAÇÕES
+# VARIÁVEIS DE AMBIENTE
 # ============================================
 
 ZAPI_INSTANCE = os.getenv("ZAPI_INSTANCE")
 
 ZAPI_TOKEN = os.getenv("ZAPI_TOKEN")
-
-ZAPI_CLIENT_TOKEN = os.getenv("ZAPI_CLIENT_TOKEN")
 
 NUMERO_CORRETOR = os.getenv("NUMERO_CORRETOR")
 
@@ -81,12 +83,6 @@ def enviar_whatsapp(relatorio):
 
         url = f"https://api.z-api.io/instances/{ZAPI_INSTANCE}/token/{ZAPI_TOKEN}/send-text"
 
-        headers = {
-
-            "Client-Token": ZAPI_CLIENT_TOKEN
-
-        }
-
         payload = {
 
             "phone": NUMERO_CORRETOR,
@@ -97,8 +93,7 @@ def enviar_whatsapp(relatorio):
         requests.post(
 
             url,
-            json=payload,
-            headers=headers
+            json=payload
 
         )
 
@@ -162,7 +157,7 @@ def calcular_score(dados):
 
         score += 5
 
-    # IMÓVEIS ALTOS
+    # IMÓVEIS ALTO PADRÃO
 
     if "1 milhão" in faixa:
 
@@ -184,13 +179,13 @@ def calcular_score(dados):
 
         score += 2
 
-    # WHATSAPP VÁLIDO
+    # WHATSAPP
 
     if len(whatsapp) >= 10:
 
         score += 2
 
-    # IMÓVEL COMERCIAL
+    # COMERCIAL
 
     if tipo == "imóvel comercial":
 
@@ -356,7 +351,7 @@ async def processar_chatbot(mensagem, session_id):
 
             }
 
-        # COMPRA / INVESTIMENTO
+        # COMPRA
 
         return {
 
@@ -619,7 +614,7 @@ async def processar_chatbot(mensagem, session_id):
                 "mensagem":
 
                     "Não consegui identificar a localização 😊\n\n"
-                    "Pode informar a cidade, bairro, região ou referência desejada?",
+                    "Pode informar cidade, bairro, região ou referência desejada?",
 
                 "opcoes": []
 
@@ -700,7 +695,7 @@ async def processar_chatbot(mensagem, session_id):
 
     if etapa == "whatsapp":
 
-        whatsapp = re.sub(r"\\D", "", mensagem)
+        whatsapp = re.sub(r"\D", "", mensagem)
 
         sessao["whatsapp"] = whatsapp
 
@@ -708,7 +703,7 @@ async def processar_chatbot(mensagem, session_id):
 
         score = calcular_score(sessao)
 
-        relatorio = f'''
+        relatorio = f"""
 
 🚨 NOVO LEAD IMOBILIÁRIO
 
@@ -747,7 +742,7 @@ async def processar_chatbot(mensagem, session_id):
 
 🔥 Score Lead:
 {score}
-'''
+"""
 
         enviar_whatsapp(relatorio)
 
