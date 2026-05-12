@@ -22,3 +22,19 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+
+# Ambiente
+backend/.env
+
+# Backend cache
+backend/__pycache__/
+
+# Banco local
+*.sqlite3
