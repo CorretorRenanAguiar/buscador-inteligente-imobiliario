@@ -55,7 +55,7 @@ export default function ChatBot() {
         try {
 
             const resposta = await fetch(
-  "https://buscador-inteligente-imobiliario-production-b5a8.up.railway.app/chat",
+                "https://buscador-inteligente-imobiliario-production-b5a8.up.railway.app/chat",
 
                 {
 
@@ -96,7 +96,9 @@ export default function ChatBot() {
                         dados.opcoes || [],
 
                     link_whatsapp:
-                        dados.link_whatsapp || null
+                        dados.link_whatsapp
+                            ? dados.link_whatsapp.replace(/\D/g, "")
+                            : null
 
                 }
 
@@ -517,9 +519,7 @@ export default function ChatBot() {
 
                                                     <a
 
-                                                        href={
-                                                            msg.link_whatsapp
-                                                        }
+                                                        href={`https://wa.me/${msg.link_whatsapp}`}
 
                                                         target="_blank"
 
