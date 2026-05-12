@@ -8,19 +8,11 @@ export default function ChatBot() {
 
     const [input, setInput] = useState("")
 
-
-
     const mensagensRef = useRef(null)
 
-
-
     const [sessao] = useState(
-
         Date.now().toString()
-
     )
-
-
 
     // =====================================
     // AUTO SCROLL
@@ -31,52 +23,40 @@ export default function ChatBot() {
         if (mensagensRef.current) {
 
             mensagensRef.current.scrollTop =
-
                 mensagensRef.current.scrollHeight
 
         }
 
     }, [mensagens])
 
-
-
     // =====================================
-    // ENVIAR
+    // ENVIAR MENSAGEM
     // =====================================
 
     async function enviarMensagem(texto) {
 
         if (!texto.trim()) return
 
-
-
         const novasMensagens = [
 
             ...mensagens,
 
             {
-
                 autor: "usuario",
-
                 texto
-
             }
 
         ]
-
-
 
         setMensagens(novasMensagens)
 
         setInput("")
 
-
-
         try {
 
             const resposta = await fetch(
 
-                "http://127.0.0.1:8000/chat",
+                "http://192.168.2.124/8000/chat",
 
                 {
 
@@ -101,11 +81,7 @@ export default function ChatBot() {
 
             )
 
-
-
             const dados = await resposta.json()
-
-
 
             setMensagens([
 
@@ -115,67 +91,48 @@ export default function ChatBot() {
 
                     autor: "bot",
 
-                    texto: dados.resposta,
+                    texto: dados.mensagem,
 
-                    opcoes: dados.opcoes || []
+                    opcoes:
+                        dados.opcoes || [],
+
+                    link_whatsapp:
+                        dados.link_whatsapp || null
 
                 }
 
             ])
 
-
-
-            // =================================
-            // WHATSAPP
-            // =================================
-
-            if (
-
-                dados.abrir_whatsapp
-
-            ) {
-
-                const mensagemZap =
-
-                    encodeURIComponent(
-
-                        dados.whatsapp_texto
-
-                    )
-
-
-
-                window.open(
-
-                    `https://wa.me/5532998148333?text=${mensagemZap}`,
-
-                    "_blank"
-
-                )
-
-            }
-
-
-
         } catch (erro) {
 
             console.log(erro)
+
+            setMensagens([
+
+                ...novasMensagens,
+
+                {
+
+                    autor: "bot",
+
+                    texto:
+                        "❌ Erro ao conectar com o servidor."
+
+                }
+
+            ])
 
         }
 
     }
 
-
-
     // =====================================
-    // INICIAR CHAT
+    // ABRIR CHAT
     // =====================================
 
     function abrirChat() {
 
         setAberto(true)
-
-
 
         if (mensagens.length === 0) {
 
@@ -184,8 +141,6 @@ export default function ChatBot() {
         }
 
     }
-
-
 
     return (
 
@@ -230,7 +185,6 @@ export default function ChatBot() {
                             zIndex: 99999,
 
                             boxShadow:
-
                                 "0 6px 20px rgba(0,0,0,0.3)"
 
                         }}
@@ -244,8 +198,6 @@ export default function ChatBot() {
                 )
 
             }
-
-
 
             {/* ================================= */}
             {/* CHAT */}
@@ -282,12 +234,7 @@ export default function ChatBot() {
                             flexDirection: "column",
 
                             boxShadow:
-
-                                "0 12px 35px rgba(0,0,0,0.25)",
-
-                            animation:
-
-                                "fadeIn 0.2s ease"
+                                "0 12px 35px rgba(0,0,0,0.25)"
 
                         }}
 
@@ -308,7 +255,6 @@ export default function ChatBot() {
                                 display: "flex",
 
                                 justifyContent:
-
                                     "space-between",
 
                                 alignItems: "center"
@@ -335,8 +281,6 @@ export default function ChatBot() {
 
                                 </div>
 
-
-
                                 <div
 
                                     style={{
@@ -355,16 +299,10 @@ export default function ChatBot() {
 
                             </div>
 
-
-
-                            {/* MINIMIZAR */}
-
                             <button
 
                                 onClick={() =>
-
                                     setAberto(false)
-
                                 }
 
                                 style={{
@@ -388,8 +326,6 @@ export default function ChatBot() {
                             </button>
 
                         </div>
-
-
 
                         {/* MENSAGENS */}
 
@@ -440,11 +376,8 @@ export default function ChatBot() {
                                                 flexDirection: "column",
 
                                                 alignItems:
-
                                                     msg.autor === "bot"
-
                                                     ? "flex-start"
-
                                                     : "flex-end"
 
                                             }}
@@ -458,19 +391,13 @@ export default function ChatBot() {
                                                 style={{
 
                                                     background:
-
                                                         msg.autor === "bot"
-
                                                         ? "#fff"
-
                                                         : "#d4a017",
 
                                                     color:
-
                                                         msg.autor === "bot"
-
                                                         ? "#000"
-
                                                         : "#fff",
 
                                                     padding: "12px",
@@ -489,17 +416,11 @@ export default function ChatBot() {
 
                                             >
 
-                                                {
-
-                                                    msg.texto
-
-                                                }
+                                                {msg.texto}
 
                                             </div>
 
-
-
-                                            {/* BOTÕES */}
+                                            {/* OPÇÕES */}
 
                                             {
 
@@ -515,7 +436,7 @@ export default function ChatBot() {
 
                                                             gap: "8px",
 
-                                                            marginTop: "8px"
+                                                            marginTop: "10px"
 
                                                         }}
 
@@ -538,54 +459,42 @@ export default function ChatBot() {
                                                                         key={i}
 
                                                                         onClick={() =>
-
                                                                             enviarMensagem(
-
                                                                                 opcao
-
                                                                             )
-
                                                                         }
 
                                                                         style={{
 
                                                                             background:
-
                                                                                 "#d4a017",
 
                                                                             color:
-
                                                                                 "#fff",
 
                                                                             border:
-
                                                                                 "none",
 
                                                                             borderRadius:
-
                                                                                 "10px",
 
                                                                             padding:
-
-                                                                                "8px 12px",
+                                                                                "10px 14px",
 
                                                                             cursor:
-
                                                                                 "pointer",
 
                                                                             fontSize:
+                                                                                "13px",
 
-                                                                                "13px"
+                                                                            fontWeight:
+                                                                                "bold"
 
                                                                         }}
 
                                                                     >
 
-                                                                        {
-
-                                                                            opcao
-
-                                                                        }
+                                                                        {opcao}
 
                                                                     </button>
 
@@ -601,6 +510,60 @@ export default function ChatBot() {
 
                                             }
 
+                                            {/* BOTÃO WHATSAPP */}
+
+                                            {
+
+                                                msg.link_whatsapp && (
+
+                                                    <a
+
+                                                        href={
+                                                            msg.link_whatsapp
+                                                        }
+
+                                                        target="_blank"
+
+                                                        rel="noreferrer"
+
+                                                        style={{
+
+                                                            marginTop: "10px",
+
+                                                            display:
+                                                                "inline-block",
+
+                                                            background:
+                                                                "#25D366",
+
+                                                            color: "#fff",
+
+                                                            padding:
+                                                                "10px 14px",
+
+                                                            borderRadius:
+                                                                "10px",
+
+                                                            textDecoration:
+                                                                "none",
+
+                                                            fontSize: "14px",
+
+                                                            fontWeight:
+                                                                "bold"
+
+                                                        }}
+
+                                                    >
+
+                                                        Falar no WhatsApp
+
+                                                    </a>
+
+                                                )
+
+                                            }
+
                                         </div>
 
                                     )
@@ -611,8 +574,6 @@ export default function ChatBot() {
 
                         </div>
 
-
-
                         {/* INPUT */}
 
                         <div
@@ -620,7 +581,6 @@ export default function ChatBot() {
                             style={{
 
                                 borderTop:
-
                                     "1px solid #ddd",
 
                                 padding: "10px",
@@ -644,27 +604,19 @@ export default function ChatBot() {
                                 placeholder="Digite sua mensagem..."
 
                                 onChange={(e) =>
-
                                     setInput(
-
                                         e.target.value
-
                                     )
-
                                 }
 
                                 onKeyDown={(e) => {
 
                                     if (
-
                                         e.key === "Enter"
-
                                     ) {
 
                                         enviarMensagem(
-
                                             input
-
                                         )
 
                                     }
@@ -680,7 +632,6 @@ export default function ChatBot() {
                                     borderRadius: "10px",
 
                                     border:
-
                                         "1px solid #ccc",
 
                                     outline: "none",
@@ -691,18 +642,12 @@ export default function ChatBot() {
 
                             />
 
-
-
                             <button
 
                                 onClick={() =>
-
                                     enviarMensagem(
-
                                         input
-
                                     )
-
                                 }
 
                                 style={{
@@ -714,7 +659,6 @@ export default function ChatBot() {
                                     border: "none",
 
                                     padding:
-
                                         "0 16px",
 
                                     borderRadius: "10px",

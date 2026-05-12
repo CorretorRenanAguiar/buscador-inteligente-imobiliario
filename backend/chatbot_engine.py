@@ -1,232 +1,115 @@
-from database import supabase
+import requests
+
+# =========================================
+# SESSÕES
+# =========================================
 
 sessoes = {}
 
-
-
 # =========================================
-# SCORE
+# CONFIG Z-API
 # =========================================
 
-def calcular_score(sessao):
+ZAPI_URL = "https://api.z-api.io/instances/3F2EFD4EDB9BB294D6392E60CA768835/token/6F1EA3F8D36CC67014A3B84B/send-text"
 
-    score = 0
+CLIENT_TOKEN = "F5de8d99a8ed846b6a50576a80f6240acS"
 
-
-
-    if sessao.get("objetivo"):
-        score += 20
-
-
-
-    if sessao.get("tipo_imovel"):
-        score += 20
-
-
-
-    if sessao.get("quartos"):
-        score += 10
-
-
-
-    if sessao.get("bairro"):
-        score += 20
-
-
-
-    if sessao.get("valor"):
-        score += 30
-
-
-
-    if sessao.get("telefone"):
-        score += 40
-
-
-
-    return score
-
-
+SEU_NUMERO = "5532998148333"
 
 # =========================================
-# CLASSIFICAÇÃO
+# ENVIO AUTOMÁTICO WHATSAPP
 # =========================================
 
-def classificar_lead(score):
+def enviar_whatsapp(relatorio):
 
-    if score >= 90:
-        return "lead_quente"
+    headers = {
+        "Client-Token": CLIENT_TOKEN
+    }
 
+    payload = {
+        "phone": SEU_NUMERO,
+        "message": relatorio
+    }
 
+    try:
 
-    elif score >= 60:
-        return "lead_morno"
+        response = requests.post(
+            ZAPI_URL,
+            json=payload,
+            headers=headers
+        )
 
+        print(response.text)
 
+    except Exception as erro:
 
-    return "lead_frio"
-
-
+        print(str(erro))
 
 # =========================================
-# PROCESSAR CHATBOT
+# CHATBOT
 # =========================================
 
-async def processar_chatbot(
-
-    mensagem,
-
-    session_id
-
-):
-
-    texto = mensagem.lower()
-
-
-
-    # =====================================
-    # FALAR COM CORRETOR
-    # =====================================
-
-    if any(
-
-        termo in texto
-
-        for termo in [
-
-            "corretor",
-
-            "atendente",
-
-            "humano",
-
-            "whatsapp"
-
-        ]
-
-    ):
-
-        return {
-
-            "resposta":
-
-                "Perfeito 👍\n\n"
-
-                "Você será direcionado "
-
-                "para um corretor.",
-
-            "abrir_whatsapp": True,
-
-            "whatsapp_texto":
-
-                "Olá Renan, gostaria de falar com um corretor.",
-
-            "opcoes": [],
-
-            "classificacao":
-                "lead_quente",
-
-            "score": 100
-
-        }
-
-
-
-    # =====================================
-    # CRIAR SESSÃO
-    # =====================================
+async def processar_chatbot(mensagem, session_id):
 
     if session_id not in sessoes:
 
         sessoes[session_id] = {
-
-            "etapa": "objetivo",
-
-            "objetivo": None,
-
-            "tipo_imovel": None,
-
-            "quartos": None,
-
-            "bairro": None,
-
-            "valor": None,
-
-            "telefone": None
-
+            "etapa": 0,
+            "dados": {}
         }
-
-
 
     sessao = sessoes[session_id]
 
-
+    etapa = sessao["etapa"]
 
     # =====================================
-    # OBJETIVO
+    # ETAPA 0
     # =====================================
 
-    if sessao["etapa"] == "objetivo":
+    if etapa == 0:
 
-        if texto not in [
-
-            "comprar",
-
-            "alugar",
-
-            "investir",
-
-            "anunciar imóvel"
-
-        ]:
-
-            return {
-
-                "resposta":
-
-                    "Olá 👋\n\n"
-
-                    "Sou a assistente virtual "
-
-                    "da RA Corretor de Imóveis.\n\n"
-
-                    "Como posso ajudar?",
-
-                "opcoes": [
-
-                    "Comprar",
-
-                    "Alugar",
-
-                    "Investir",
-
-                    "Anunciar Imóvel"
-
-                ],
-
-                "classificacao":
-                    "lead_frio",
-
-                "score": 10
-
-            }
-
-
-
-        sessao["objetivo"] = texto
-
-        sessao["etapa"] = "tipo"
-
-
+        sessao["etapa"] = 1
 
         return {
 
-            "resposta":
+            "mensagem": (
+                "Olá 👋\n\n"
+                "Sou a assistente virtual imobiliária de Renan Aguiar.\n\n"
+                "Vou fazer algumas perguntas rápidas para entender o imóvel ideal para você 😊\n\n"
+                "Qual é o seu objetivo?"
+            ),
 
-                "Perfeito 👍\n\n"
+            "opcoes": [
 
-                "Qual tipo de imóvel possui interesse?",
+                "Comprar imóvel",
+
+                "Alugar imóvel",
+
+                "Investir",
+
+                "Sou corretor"
+
+            ]
+
+        }
+
+    # =====================================
+    # ETAPA 1
+    # =====================================
+
+    elif etapa == 1:
+
+        sessao["dados"]["objetivo"] = mensagem
+
+        sessao["etapa"] = 2
+
+        return {
+
+            "mensagem":
+                (
+                    "Perfeito 👍\n\n"
+                    "Qual tipo de imóvel você procura?"
+                ),
 
             "opcoes": [
 
@@ -234,436 +117,362 @@ async def processar_chatbot(
 
                 "Apartamento",
 
-                "Cobertura",
-
                 "Kitnet",
 
-                "Studio",
+                "Cobertura",
 
                 "Granja",
 
-                "Sítio",
+                "Chácara",
 
-                "Lote",
+                "Fazenda",
 
-                "Sala Comercial",
+                "Terreno",
 
-                "Loja",
+                "Lançamento",
 
-                "Galpão"
+                "Imóvel comercial"
 
-            ],
-
-            "classificacao":
-                "lead_morno",
-
-            "score": 20
+            ]
 
         }
 
-
-
     # =====================================
-    # TIPO IMÓVEL
+    # ETAPA 2
     # =====================================
 
-    elif sessao["etapa"] == "tipo":
+    elif etapa == 2:
 
-        sessao["tipo_imovel"] = mensagem
-
-
+        sessao["dados"]["tipo_imovel"] = mensagem
 
         # =================================
-        # ANUNCIAR IMÓVEL
+        # TERRENO
         # =================================
 
-        if sessao["objetivo"] == "anunciar imóvel":
+        if mensagem == "Terreno":
 
-            sessao["etapa"] = "bairro"
-
-
+            sessao["etapa"] = 20
 
             return {
 
-                "resposta":
+                "mensagem":
+                    (
+                        "Excelente escolha 👍\n\n"
+                        "Qual metragem aproximada você procura?"
+                    ),
 
-                    "Perfeito 👍\n\n"
+                "opcoes": [
 
-                    "Qual a localização do imóvel?",
+                    "Até 250 m²",
 
-                "opcoes": [],
+                    "250 m² a 500 m²",
 
-                "classificacao":
-                    "lead_morno",
+                    "500 m² a 1000 m²",
 
-                "score": 40
+                    "Acima de 1000 m²"
+
+                ]
 
             }
 
-
-
         # =================================
-        # IMÓVEIS SEM QUARTOS
+        # GRANJA / CHÁCARA / FAZENDA
         # =================================
 
-        if mensagem.lower() in [
+        elif mensagem in [
 
-            "lote",
+            "Granja",
 
-            "loja",
+            "Chácara",
 
-            "galpão",
-
-            "sala comercial"
+            "Fazenda"
 
         ]:
 
-            sessao["etapa"] = "bairro"
-
-
+            sessao["etapa"] = 21
 
             return {
 
-                "resposta":
-
-                    "Qual bairro ou região possui interesse?",
-
-                "opcoes": [],
-
-                "classificacao":
-                    "lead_morno",
-
-                "score": 40
-
-            }
-
-
-
-        # =================================
-        # IMÓVEIS COM QUARTOS
-        # =================================
-
-        sessao["etapa"] = "quartos"
-
-
-
-        return {
-
-            "resposta":
-
-                "Quantos quartos deseja?",
-
-            "opcoes": [
-
-                "1",
-
-                "2",
-
-                "3",
-
-                "4+"
-
-            ],
-
-            "classificacao":
-                "lead_morno",
-
-            "score": 40
-
-        }
-
-
-
-    # =====================================
-    # QUARTOS
-    # =====================================
-
-    elif sessao["etapa"] == "quartos":
-
-        sessao["quartos"] = mensagem
-
-        sessao["etapa"] = "bairro"
-
-
-
-        return {
-
-            "resposta":
-
-                "Qual bairro ou região possui interesse?\n\n"
-
-                "Você pode digitar bairros "
-
-                "ou regiões desejadas.",
-
-            "opcoes": [],
-
-            "classificacao":
-                "lead_morno",
-
-            "score": 50
-
-        }
-
-
-
-    # =====================================
-    # BAIRRO
-    # =====================================
-
-    elif sessao["etapa"] == "bairro":
-
-        sessao["bairro"] = mensagem
-
-        sessao["etapa"] = "valor"
-
-
-
-        # =================================
-        # ALUGUEL
-        # =================================
-
-        if sessao["objetivo"] == "alugar":
-
-            return {
-
-                "resposta":
-
-                    "Qual faixa de aluguel deseja?",
+                "mensagem":
+                    (
+                        "Excelente 😊\n\n"
+                        "Qual será o principal objetivo do imóvel?"
+                    ),
 
                 "opcoes": [
 
-                    "Até R$800",
+                    "Lazer",
 
-                    "R$800 - R$1.500",
+                    "Moradia",
 
-                    "R$1.500 - R$3.000",
+                    "Investimento",
 
-                    "Acima de R$3.000"
+                    "Produção rural"
 
-                ],
-
-                "classificacao":
-                    "lead_morno",
-
-                "score": 70
+                ]
 
             }
 
-
-
         # =================================
-        # ANUNCIAR IMÓVEL
+        # DEMAIS IMÓVEIS
         # =================================
 
-        elif sessao["objetivo"] == "anunciar imóvel":
+        else:
+
+            sessao["etapa"] = 3
 
             return {
 
-                "resposta":
-
-                    "Você já possui uma "
-
-                    "faixa de valor para anúncio?",
+                "mensagem":
+                    (
+                        "Entendi 👍\n\n"
+                        "Quantos quartos você deseja?"
+                    ),
 
                 "opcoes": [
 
-                    "Até R$200 mil",
+                    "1 quarto",
 
-                    "R$200 mil - R$400 mil",
+                    "2 quartos",
 
-                    "R$400 mil - R$700 mil",
+                    "3 quartos",
 
-                    "Acima de R$700 mil"
+                    "4 quartos ou mais"
 
-                ],
-
-                "classificacao":
-                    "lead_morno",
-
-                "score": 70
+                ]
 
             }
 
+    # =====================================
+    # ETAPA TERRENO
+    # =====================================
 
+    elif etapa == 20:
 
-        # =================================
-        # COMPRA / INVESTIMENTO
-        # =================================
+        sessao["dados"]["metragem"] = mensagem
+
+        sessao["etapa"] = 4
 
         return {
 
-            "resposta":
+            "mensagem":
+                (
+                    "Perfeito 👍\n\n"
+                    "Em qual bairro ou região você gostaria de encontrar o imóvel?"
+                )
 
-                "Qual faixa de valor deseja?",
+        }
+
+    # =====================================
+    # ETAPA GRANJA / CHÁCARA / FAZENDA
+    # =====================================
+
+    elif etapa == 21:
+
+        sessao["dados"]["finalidade"] = mensagem
+
+        sessao["etapa"] = 3
+
+        return {
+
+            "mensagem":
+                (
+                    "Ótimo 😊\n\n"
+                    "Quantos quartos você deseja?"
+                ),
 
             "opcoes": [
 
-                "R$100 mil - R$200 mil",
+                "1 quarto",
 
-                "R$200 mil - R$300 mil",
+                "2 quartos",
 
-                "R$300 mil - R$400 mil",
+                "3 quartos",
 
-                "Acima de R$400 mil"
+                "4 quartos ou mais"
 
-            ],
-
-            "classificacao":
-                "lead_quente",
-
-            "score": 70
+            ]
 
         }
 
-
-
     # =====================================
-    # VALOR
+    # ETAPA 3
     # =====================================
 
-    elif sessao["etapa"] == "valor":
+    elif etapa == 3:
 
-        sessao["valor"] = mensagem
+        sessao["dados"]["quartos"] = mensagem
 
-        sessao["etapa"] = "telefone"
-
-
+        sessao["etapa"] = 4
 
         return {
 
-            "resposta":
-
-                "Perfeito 🚀\n\n"
-
-                "Informe seu WhatsApp com DDD "
-
-                "para receber atendimento "
-
-                "e imóveis compatíveis.",
-
-            "opcoes": [],
-
-            "classificacao":
-                "lead_quente",
-
-            "score": 80
+            "mensagem":
+                (
+                    "Perfeito 👍\n\n"
+                    "Em qual bairro ou região você gostaria de encontrar o imóvel?"
+                )
 
         }
 
-
-
     # =====================================
-    # TELEFONE
+    # ETAPA 4
     # =====================================
 
-    elif sessao["etapa"] == "telefone":
+    elif etapa == 4:
 
-        sessao["telefone"] = mensagem
+        sessao["dados"]["bairro"] = mensagem
 
+        sessao["etapa"] = 5
 
+        return {
 
-        score = calcular_score(
-            sessao
-        )
+            "mensagem":
+                (
+                    "Excelente 😊\n\n"
+                    "Qual faixa de valor você procura?"
+                ),
 
+            "opcoes": [
 
+                "Até R$ 150 mil",
 
-        classificacao = classificar_lead(
-            score
-        )
+                "R$ 150 mil a R$ 300 mil",
 
+                "R$ 300 mil a R$ 500 mil",
 
+                "R$ 500 mil a R$ 1 milhão",
+
+                "Acima de R$ 1 milhão"
+
+            ]
+
+        }
+
+    # =====================================
+    # ETAPA 5
+    # =====================================
+
+    elif etapa == 5:
+
+        sessao["dados"]["faixa_valor"] = mensagem
+
+        sessao["etapa"] = 6
+
+        return {
+
+            "mensagem":
+                (
+                    "Ótimo 😊\n\n"
+                    "Para que um corretor entre em contato com você, informe seu WhatsApp com DDD."
+                )
+
+        }
+
+    # =====================================
+    # ETAPA FINAL
+    # =====================================
+
+    elif etapa == 6:
+
+        sessao["dados"]["telefone"] = mensagem
+
+        dados = sessao["dados"]
+
+        # =================================
+        # SCORE
+        # =================================
+
+        score = 0
+
+        if "Comprar" in dados["objetivo"]:
+            score += 50
+
+        if dados["tipo_imovel"] in [
+            "Casa",
+            "Apartamento",
+            "Cobertura",
+            "Lançamento"
+        ]:
+            score += 40
+
+        if "Acima" in dados["faixa_valor"]:
+            score += 30
+
+        score += 20
+
+        # =================================
+        # CLASSIFICAÇÃO
+        # =================================
+
+        if score >= 100:
+
+            classificacao = "🔥 Lead Quente"
+
+        elif score >= 70:
+
+            classificacao = "🟡 Lead Morno"
+
+        else:
+
+            classificacao = "🔵 Lead Frio"
+
+        # =================================
+        # RELATÓRIO
+        # =================================
 
         relatorio = f"""
-🏠 NOVO LEAD IMOBILIÁRIO
+🚨 NOVO LEAD IMOBILIÁRIO
 
-🎯 Objetivo: {sessao['objetivo']}
-🏡 Tipo: {sessao['tipo_imovel']}
-🛏 Quartos: {sessao['quartos']}
-📍 Região: {sessao['bairro']}
-💰 Faixa: {sessao['valor']}
-📞 WhatsApp: {sessao['telefone']}
+👤 Objetivo: {dados.get('objetivo', '')}
 
-🔥 Classificação: {classificacao}
-⭐ Score: {score}
+🏡 Tipo de imóvel: {dados.get('tipo_imovel', '')}
+
+🛏 Quartos: {dados.get('quartos', '')}
+
+📐 Metragem: {dados.get('metragem', '')}
+
+🌱 Finalidade rural: {dados.get('finalidade', '')}
+
+📍 Bairro/Região: {dados.get('bairro', '')}
+
+💰 Faixa de valor: {dados.get('faixa_valor', '')}
+
+📱 WhatsApp Cliente: {dados.get('telefone', '')}
+
+📊 Score: {score}
+
+{classificacao}
 """
 
+        # =================================
+        # ENVIO AUTOMÁTICO
+        # =================================
 
+        enviar_whatsapp(relatorio)
 
-        try:
-
-            supabase.table(
-                "chatbot_logs"
-            ).insert({
-
-                "session_id":
-                    session_id,
-
-                "mensagem_usuario":
-                    mensagem,
-
-                "resposta_chatbot":
-                    relatorio,
-
-                "intencao_detectada":
-                    sessao["objetivo"],
-
-                "score_interesse":
-                    score
-
-            }).execute()
-
-        except Exception as erro:
-
-            print(erro)
-
-
+        del sessoes[session_id]
 
         return {
 
-            "resposta":
+            "mensagem": (
+                "✅ Atendimento concluído com sucesso!\n\n"
+                "Nossa equipe já recebeu suas informações.\n\n"
+                "Em breve um corretor entrará em contato 😊"
+            ),
 
-                "Perfil registrado com sucesso ✅\n\n"
-
-                "Você será direcionado "
-
-                "para um corretor.",
-
-            "abrir_whatsapp": True,
-
-            "whatsapp_texto":
-                relatorio,
-
-            "opcoes": [],
-
-            "classificacao":
-                classificacao,
-
-            "score":
-                score
+            "link_whatsapp":
+                "https://wa.me/5532998148333"
 
         }
 
-
-
     # =====================================
-    # FINAL
+    # FALLBACK
     # =====================================
 
     return {
 
-        "resposta":
-
-            "Posso continuar ajudando "
-
-            "você 👍",
-
-        "opcoes": [],
-
-        "classificacao":
-            "lead_quente",
-
-        "score": 100
+        "mensagem":
+            "Desculpe, não consegui entender sua resposta."
 
     }
