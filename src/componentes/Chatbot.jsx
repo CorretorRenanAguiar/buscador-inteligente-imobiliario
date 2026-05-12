@@ -55,8 +55,7 @@ export default function ChatBot() {
         try {
 
             const resposta = await fetch(
-
-                "http://192.168.2.124/8000/chat",
+  "https://buscador-inteligente-imobiliario-production-b5a8.up.railway.app/chat",
 
                 {
 
