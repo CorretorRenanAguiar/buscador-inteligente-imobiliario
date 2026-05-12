@@ -47,6 +47,26 @@ PALAVRAS_PERMUTA = [
 ]
 
 # ============================================
+# LOCALIZAÇÕES INVÁLIDAS
+# ============================================
+
+LOCALIZACOES_INVALIDAS = [
+
+    "aaa",
+    "bbb",
+    "ccc",
+    "abc",
+    "teste",
+    "123",
+    "piru",
+    "asdf",
+    "qwerty",
+    "esse",
+    "isso"
+
+]
+
+# ============================================
 # ENVIAR WHATSAPP
 # ============================================
 
@@ -109,20 +129,7 @@ def validar_localizacao(texto):
 
         return False
 
-    invalidos = [
-
-        "aaa",
-        "bbb",
-        "ccc",
-        "esse",
-        "isso",
-        "teste",
-        "abc",
-        "123"
-
-    ]
-
-    if texto in invalidos:
+    if texto in LOCALIZACOES_INVALIDAS:
 
         return False
 
@@ -142,34 +149,84 @@ def calcular_score(dados):
 
     tipo = dados.get("tipo_imovel", "").lower()
 
+    whatsapp = dados.get("whatsapp", "")
+
+    # ========================================
+    # INVESTIMENTO
+    # ========================================
+
     if "invest" in objetivo:
 
-        score += 4
+        score += 5
+
+    # ========================================
+    # VALOR ALTO
+    # ========================================
 
     if "1 milhão" in faixa:
 
         score += 5
 
-    if "500 mil" in faixa:
+    elif "500 mil" in faixa:
 
         score += 3
 
-    if dados.get("permuta"):
+    # ========================================
+    # LOCAÇÃO
+    # ========================================
 
-        score += 5
+    if "alugar" in objetivo:
+
+        score += 2
+
+    # ========================================
+    # MOBILIADO
+    # ========================================
+
+    if dados.get("mobiliado") == "Mobiliado":
+
+        score += 2
+
+    # ========================================
+    # WHATSAPP VÁLIDO
+    # ========================================
+
+    if len(whatsapp) >= 10:
+
+        score += 2
+
+    # ========================================
+    # IMÓVEL COMERCIAL
+    # ========================================
+
+    if tipo == "imóvel comercial":
+
+        score += 3
+
+    # ========================================
+    # RURAL
+    # ========================================
 
     if tipo in [
 
         "fazenda",
+        "granja",
         "chácara",
         "chacara",
-        "granja",
         "sítio",
         "sitio"
 
     ]:
 
         score += 3
+
+    # ========================================
+    # PERMUTA
+    # ========================================
+
+    if dados.get("permuta"):
+
+        score += 5
 
     return score
 
@@ -186,15 +243,19 @@ def classificar_perfil(dados):
     if tipo in [
 
         "fazenda",
-        "sítio",
-        "sitio",
         "granja",
         "chácara",
-        "chacara"
+        "chacara",
+        "sítio",
+        "sitio"
 
     ]:
 
         return "Rural"
+
+    if "alugar" in objetivo:
+
+        return "Locação"
 
     if "invest" in objetivo:
 
@@ -203,10 +264,6 @@ def classificar_perfil(dados):
     if tipo == "lançamento":
 
         return "Lançamento"
-
-    if "alugar" in objetivo.lower():
-
-        return "Locação"
 
     return "Residencial"
 
@@ -313,7 +370,7 @@ async def processar_chatbot(mensagem, session_id):
             }
 
         # ====================================
-        # COMPRA/INVESTIMENTO
+        # COMPRA
         # ====================================
 
         return {
@@ -412,7 +469,7 @@ async def processar_chatbot(mensagem, session_id):
             }
 
         # ====================================
-        # IMÓVEL URBANO
+        # URBANO
         # ====================================
 
         sessao["etapa"] = "quartos"
@@ -696,10 +753,10 @@ async def processar_chatbot(mensagem, session_id):
 🏠 Tipo imóvel:
 {sessao.get('tipo_imovel')}
 
-🛏 Quartos:
+🛏️ Quartos:
 {sessao.get('quartos', 'Não informado')}
 
-🛋 Mobiliado:
+🛋️ Mobiliado:
 {sessao.get('mobiliado', 'Não informado')}
 
 🌱 Objetivo rural:
