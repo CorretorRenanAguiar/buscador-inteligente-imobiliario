@@ -1,21 +1,26 @@
-# ============================================
-# chatbot_engine.py
-# ============================================
-
-import requests
+import os
 import re
+import requests
+
+from dotenv import load_dotenv
 
 # ============================================
-# CONFIGURAÇÕES Z-API
+# CARREGAR VARIÁVEIS .ENV
 # ============================================
 
-ZAPI_INSTANCE = "3F2EFD4EDB9BB294D6392E60CA768835"
+load_dotenv()
 
-ZAPI_TOKEN = "6F1EA3F8D36CC67014A3B84B"
+# ============================================
+# CONFIGURAÇÕES
+# ============================================
 
-ZAPI_CLIENT_TOKEN = "F5de8d99a8ed846b6a50576a80f6240acS"
+ZAPI_INSTANCE = os.getenv("ZAPI_INSTANCE")
 
-NUMERO_CORRETOR = "5532998148333"
+ZAPI_TOKEN = os.getenv("ZAPI_TOKEN")
+
+ZAPI_CLIENT_TOKEN = os.getenv("ZAPI_CLIENT_TOKEN")
+
+NUMERO_CORRETOR = os.getenv("NUMERO_CORRETOR")
 
 # ============================================
 # SESSÕES
@@ -24,7 +29,7 @@ NUMERO_CORRETOR = "5532998148333"
 sessoes = {}
 
 # ============================================
-# PALAVRAS DE PERMUTA
+# PALAVRAS PERMUTA
 # ============================================
 
 PALAVRAS_PERMUTA = [
@@ -56,13 +61,13 @@ LOCALIZACOES_INVALIDAS = [
     "bbb",
     "ccc",
     "abc",
-    "teste",
     "123",
+    "teste",
     "piru",
     "asdf",
     "qwerty",
-    "esse",
-    "isso"
+    "isso",
+    "esse"
 
 ]
 
@@ -99,23 +104,7 @@ def enviar_whatsapp(relatorio):
 
     except Exception as erro:
 
-        print("Erro Z-API:", erro)
-
-# ============================================
-# DETECTAR PERMUTA
-# ============================================
-
-def detectar_permuta(texto):
-
-    texto = texto.lower()
-
-    for palavra in PALAVRAS_PERMUTA:
-
-        if palavra in texto:
-
-            return True
-
-    return False
+        print("Erro ao enviar WhatsApp:", erro)
 
 # ============================================
 # VALIDAR LOCALIZAÇÃO
@@ -136,6 +125,22 @@ def validar_localizacao(texto):
     return True
 
 # ============================================
+# DETECTAR PERMUTA
+# ============================================
+
+def detectar_permuta(texto):
+
+    texto = texto.lower()
+
+    for palavra in PALAVRAS_PERMUTA:
+
+        if palavra in texto:
+
+            return True
+
+    return False
+
+# ============================================
 # CALCULAR SCORE
 # ============================================
 
@@ -151,17 +156,13 @@ def calcular_score(dados):
 
     whatsapp = dados.get("whatsapp", "")
 
-    # ========================================
     # INVESTIMENTO
-    # ========================================
 
     if "invest" in objetivo:
 
         score += 5
 
-    # ========================================
-    # VALOR ALTO
-    # ========================================
+    # IMÓVEIS ALTOS
 
     if "1 milhão" in faixa:
 
@@ -171,58 +172,46 @@ def calcular_score(dados):
 
         score += 3
 
-    # ========================================
     # LOCAÇÃO
-    # ========================================
 
     if "alugar" in objetivo:
 
         score += 2
 
-    # ========================================
     # MOBILIADO
-    # ========================================
 
     if dados.get("mobiliado") == "Mobiliado":
 
         score += 2
 
-    # ========================================
     # WHATSAPP VÁLIDO
-    # ========================================
 
     if len(whatsapp) >= 10:
 
         score += 2
 
-    # ========================================
     # IMÓVEL COMERCIAL
-    # ========================================
 
     if tipo == "imóvel comercial":
 
         score += 3
 
-    # ========================================
     # RURAL
-    # ========================================
 
     if tipo in [
 
         "fazenda",
         "granja",
-        "chácara",
-        "chacara",
         "sítio",
-        "sitio"
+        "sitio",
+        "chácara",
+        "chacara"
 
     ]:
 
         score += 3
 
-    # ========================================
     # PERMUTA
-    # ========================================
 
     if dados.get("permuta"):
 
@@ -240,19 +229,6 @@ def classificar_perfil(dados):
 
     objetivo = dados.get("objetivo", "").lower()
 
-    if tipo in [
-
-        "fazenda",
-        "granja",
-        "chácara",
-        "chacara",
-        "sítio",
-        "sitio"
-
-    ]:
-
-        return "Rural"
-
     if "alugar" in objetivo:
 
         return "Locação"
@@ -261,6 +237,19 @@ def classificar_perfil(dados):
 
         return "Investidor"
 
+    if tipo in [
+
+        "fazenda",
+        "granja",
+        "sítio",
+        "sitio",
+        "chácara",
+        "chacara"
+
+    ]:
+
+        return "Rural"
+
     if tipo == "lançamento":
 
         return "Lançamento"
@@ -268,7 +257,7 @@ def classificar_perfil(dados):
     return "Residencial"
 
 # ============================================
-# PROCESSAMENTO PRINCIPAL
+# PROCESSAMENTO CHATBOT
 # ============================================
 
 async def processar_chatbot(mensagem, session_id):
@@ -319,7 +308,7 @@ async def processar_chatbot(mensagem, session_id):
 
         sessao["permuta"] = True
 
-        sessao["etapa"] = "whatsapp_permuta"
+        sessao["etapa"] = "whatsapp"
 
         return {
 
@@ -343,9 +332,7 @@ async def processar_chatbot(mensagem, session_id):
 
         sessao["etapa"] = "tipo_imovel"
 
-        # ====================================
         # ALUGUEL
-        # ====================================
 
         if "alugar" in mensagem.lower():
 
@@ -369,9 +356,7 @@ async def processar_chatbot(mensagem, session_id):
 
             }
 
-        # ====================================
-        # COMPRA
-        # ====================================
+        # COMPRA / INVESTIMENTO
 
         return {
 
@@ -408,18 +393,16 @@ async def processar_chatbot(mensagem, session_id):
 
         tipo = mensagem.lower()
 
-        # ====================================
         # RURAL
-        # ====================================
 
         if tipo in [
 
             "granja",
-            "chácara",
-            "chacara",
             "fazenda",
             "sítio",
-            "sitio"
+            "sitio",
+            "chácara",
+            "chacara"
 
         ]:
 
@@ -443,9 +426,7 @@ async def processar_chatbot(mensagem, session_id):
 
             }
 
-        # ====================================
         # TERRENO
-        # ====================================
 
         if tipo == "terreno":
 
@@ -468,9 +449,7 @@ async def processar_chatbot(mensagem, session_id):
 
             }
 
-        # ====================================
         # URBANO
-        # ====================================
 
         sessao["etapa"] = "quartos"
 
@@ -570,9 +549,7 @@ async def processar_chatbot(mensagem, session_id):
 
         sessao["quartos"] = mensagem
 
-        # ====================================
-        # ALUGUEL
-        # ====================================
+        # LOCAÇÃO
 
         if "alugar" in sessao["objetivo"].lower():
 
@@ -652,9 +629,7 @@ async def processar_chatbot(mensagem, session_id):
 
         sessao["etapa"] = "faixa_valor"
 
-        # ====================================
         # ALUGUEL
-        # ====================================
 
         if "alugar" in sessao["objetivo"].lower():
 
@@ -677,9 +652,7 @@ async def processar_chatbot(mensagem, session_id):
 
             }
 
-        # ====================================
         # COMPRA
-        # ====================================
 
         return {
 
@@ -725,14 +698,9 @@ async def processar_chatbot(mensagem, session_id):
     # WHATSAPP
     # ========================================
 
-    if etapa in [
+    if etapa == "whatsapp":
 
-        "whatsapp",
-        "whatsapp_permuta"
-
-    ]:
-
-        whatsapp = re.sub(r"\D", "", mensagem)
+        whatsapp = re.sub(r"\\D", "", mensagem)
 
         sessao["whatsapp"] = whatsapp
 
@@ -740,7 +708,7 @@ async def processar_chatbot(mensagem, session_id):
 
         score = calcular_score(sessao)
 
-        relatorio = f"""
+        relatorio = f'''
 
 🚨 NOVO LEAD IMOBILIÁRIO
 
@@ -748,38 +716,38 @@ async def processar_chatbot(mensagem, session_id):
 {perfil}
 
 🎯 Objetivo:
-{sessao.get('objetivo')}
+{sessao.get("objetivo")}
 
 🏠 Tipo imóvel:
-{sessao.get('tipo_imovel')}
+{sessao.get("tipo_imovel")}
 
 🛏️ Quartos:
-{sessao.get('quartos', 'Não informado')}
+{sessao.get("quartos", "Não informado")}
 
 🛋️ Mobiliado:
-{sessao.get('mobiliado', 'Não informado')}
+{sessao.get("mobiliado", "Não informado")}
 
 🌱 Objetivo rural:
-{sessao.get('objetivo_rural', 'Não informado')}
+{sessao.get("objetivo_rural", "Não informado")}
 
 📏 Área/Hectares:
-{sessao.get('hectares', 'Não informado')}
+{sessao.get("hectares", "Não informado")}
 
 📍 Localização:
-{sessao.get('localizacao')}
+{sessao.get("localizacao")}
 
 💰 Faixa valor:
-{sessao.get('faixa_valor')}
+{sessao.get("faixa_valor")}
 
 🔁 Permuta:
-{'Sim' if sessao.get('permuta') else 'Não'}
+{"Sim" if sessao.get("permuta") else "Não"}
 
 📱 WhatsApp cliente:
 {whatsapp}
 
 🔥 Score Lead:
 {score}
-"""
+'''
 
         enviar_whatsapp(relatorio)
 
