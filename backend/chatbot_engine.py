@@ -5,7 +5,7 @@
 import os
 import re
 import requests
-
+from supabase import create_client
 from dotenv import load_dotenv
 
 # ============================================
@@ -21,7 +21,17 @@ load_dotenv()
 ZAPI_INSTANCE = os.getenv("ZAPI_INSTANCE")
 ZAPI_TOKEN = os.getenv("ZAPI_TOKEN")
 NUMERO_CORRETOR = os.getenv("NUMERO_CORRETOR")
+# ============================================
+# SUPABASE
+# ============================================
 
+supabase = create_client(
+
+    os.getenv("SUPABASE_URL"),
+
+    os.getenv("SUPABASE_KEY")
+
+)
 # ============================================
 # SESSÕES
 # ============================================
@@ -235,7 +245,79 @@ def classificar_perfil(dados):
         return "Lançamento"
 
     return "Residencial"
+# ============================================
+# SALVAR LEAD SUPABASE
+# ============================================
 
+def salvar_lead_supabase(dados):
+
+    try:
+
+        score = calcular_score(dados)
+
+        classificacao = "frio"
+
+        if score >= 8:
+
+            classificacao = "quente"
+
+        elif score >= 4:
+
+            classificacao = "morno"
+
+        payload = {
+
+            "telefone":
+
+                dados.get("whatsapp"),
+
+            "bairro":
+
+                dados.get("localizacao"),
+
+            "faixa_preco_interesse":
+
+                dados.get("faixa_valor"),
+
+            "tipo_interesse":
+
+                dados.get("tipo_imovel"),
+
+            "objetivo":
+
+                dados.get("objetivo"),
+
+            "origem_lead":
+
+                "chatbot",
+
+            "score_lead":
+
+                score,
+
+            "classificacao_lead":
+
+                classificacao
+
+        }
+
+        resposta = supabase.table("leads").insert(payload).execute()
+
+        print("====================================")
+        print("LEAD SALVO SUPABASE")
+        print(resposta)
+        print("====================================")
+
+        return True
+
+    except Exception as erro:
+
+        print("====================================")
+        print("ERRO SUPABASE")
+        print(str(erro))
+        print("====================================")
+
+        return False
 # ============================================
 # ENVIAR WHATSAPP
 # ============================================
@@ -784,7 +866,7 @@ async def processar_chatbot(mensagem, session_id):
 """
 
         print("RELATORIO GERADO")
-
+        salvar_lead_supabase(sessao)
         enviado = enviar_whatsapp(relatorio)
 
         print("RESULTADO ENVIO:", enviado)
