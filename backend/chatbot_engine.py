@@ -15,7 +15,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # ============================================
-# VARIÁVEIS AMBIENTE
+# VARIÁVEIS DE AMBIENTE
 # ============================================
 
 ZAPI_INSTANCE = os.getenv("ZAPI_INSTANCE")
@@ -54,7 +54,7 @@ PALAVRAS_PERMUTA = [
 ]
 
 # ============================================
-# ENTRADAS INVÁLIDAS
+# LOCALIZAÇÕES INVÁLIDAS
 # ============================================
 
 LOCALIZACOES_INVALIDAS = [
@@ -130,7 +130,7 @@ def calcular_score(dados):
         score += 5
 
     # ========================================
-    # VALOR ALTO
+    # VALORES ALTOS
     # ========================================
 
     if "1 milhão" in faixa:
@@ -166,7 +166,7 @@ def calcular_score(dados):
         score += 2
 
     # ========================================
-    # COMERCIAL
+    # IMÓVEL COMERCIAL
     # ========================================
 
     if tipo == "imóvel comercial":
@@ -244,6 +244,10 @@ def enviar_whatsapp(relatorio):
 
     try:
 
+        print("====================================")
+        print("FUNÇÃO ENVIAR WHATSAPP EXECUTADA")
+        print("====================================")
+
         url = f"https://api.z-api.io/instances/{ZAPI_INSTANCE}/token/{ZAPI_TOKEN}/send-text"
 
         payload = {
@@ -258,6 +262,9 @@ def enviar_whatsapp(relatorio):
             "Content-Type": "application/json"
 
         }
+
+        print("URL:", url)
+        print("PAYLOAD:", payload)
 
         response = requests.post(
 
@@ -280,7 +287,7 @@ def enviar_whatsapp(relatorio):
 
         print("====================================")
         print("ERRO AO ENVIAR WHATSAPP")
-        print(erro)
+        print(str(erro))
         print("====================================")
 
         return False
@@ -361,10 +368,6 @@ async def processar_chatbot(mensagem, session_id):
 
         sessao["etapa"] = "tipo_imovel"
 
-        # ====================================
-        # LOCAÇÃO
-        # ====================================
-
         if "alugar" in mensagem.lower():
 
             return {
@@ -386,10 +389,6 @@ async def processar_chatbot(mensagem, session_id):
                 ]
 
             }
-
-        # ====================================
-        # COMPRA / INVESTIMENTO
-        # ====================================
 
         return {
 
@@ -427,7 +426,7 @@ async def processar_chatbot(mensagem, session_id):
         tipo = mensagem.lower()
 
         # ====================================
-        # IMÓVEIS RURAIS
+        # RURAL
         # ====================================
 
         if tipo in [
@@ -588,10 +587,6 @@ async def processar_chatbot(mensagem, session_id):
 
         sessao["quartos"] = mensagem
 
-        # ====================================
-        # LOCAÇÃO
-        # ====================================
-
         if "alugar" in sessao["objetivo"].lower():
 
             sessao["etapa"] = "mobiliado"
@@ -670,10 +665,6 @@ async def processar_chatbot(mensagem, session_id):
 
         sessao["etapa"] = "faixa_valor"
 
-        # ====================================
-        # LOCAÇÃO
-        # ====================================
-
         if "alugar" in sessao["objetivo"].lower():
 
             return {
@@ -694,10 +685,6 @@ async def processar_chatbot(mensagem, session_id):
                 ]
 
             }
-
-        # ====================================
-        # COMPRA
-        # ====================================
 
         return {
 
@@ -744,6 +731,8 @@ async def processar_chatbot(mensagem, session_id):
     # ========================================
 
     if etapa == "whatsapp":
+
+        print("ENTROU ETAPA WHATSAPP")
 
         whatsapp = re.sub(r"\D", "", mensagem)
 
@@ -794,7 +783,11 @@ async def processar_chatbot(mensagem, session_id):
 {score}
 """
 
+        print("RELATORIO GERADO")
+
         enviado = enviar_whatsapp(relatorio)
+
+        print("RESULTADO ENVIO:", enviado)
 
         del sessoes[session_id]
 
