@@ -9,19 +9,17 @@ import requests
 from dotenv import load_dotenv
 
 # ============================================
-# CARREGAR .ENV
+# CARREGAR VARIÁVEIS .ENV
 # ============================================
 
 load_dotenv()
 
 # ============================================
-# VARIÁVEIS DE AMBIENTE
+# VARIÁVEIS AMBIENTE
 # ============================================
 
 ZAPI_INSTANCE = os.getenv("ZAPI_INSTANCE")
-
 ZAPI_TOKEN = os.getenv("ZAPI_TOKEN")
-
 NUMERO_CORRETOR = os.getenv("NUMERO_CORRETOR")
 
 # ============================================
@@ -31,7 +29,7 @@ NUMERO_CORRETOR = os.getenv("NUMERO_CORRETOR")
 sessoes = {}
 
 # ============================================
-# PALAVRAS PERMUTA
+# PALAVRAS RELACIONADAS A PERMUTA
 # ============================================
 
 PALAVRAS_PERMUTA = [
@@ -44,17 +42,19 @@ PALAVRAS_PERMUTA = [
     "aceita imóvel",
     "aceita imovel",
     "aceita terreno",
+    "aceita lote",
+    "aceita casa",
+    "aceita apartamento",
     "aceitar carro",
     "aceitar veículo",
     "aceitar veiculo",
     "aceitar imóvel",
-    "aceitar imovel",
-    "aceitar terreno"
+    "aceitar imovel"
 
 ]
 
 # ============================================
-# LOCALIZAÇÕES INVÁLIDAS
+# ENTRADAS INVÁLIDAS
 # ============================================
 
 LOCALIZACOES_INVALIDAS = [
@@ -65,41 +65,14 @@ LOCALIZACOES_INVALIDAS = [
     "abc",
     "123",
     "teste",
-    "piru",
     "asdf",
     "qwerty",
     "isso",
-    "esse"
+    "esse",
+    "xxx",
+    "nada"
 
 ]
-
-# ============================================
-# ENVIAR WHATSAPP
-# ============================================
-
-def enviar_whatsapp(relatorio):
-
-    try:
-
-        url = f"https://api.z-api.io/instances/{ZAPI_INSTANCE}/token/{ZAPI_TOKEN}/send-text"
-
-        payload = {
-
-            "phone": NUMERO_CORRETOR,
-            "message": relatorio
-
-        }
-
-        requests.post(
-
-            url,
-            json=payload
-
-        )
-
-    except Exception as erro:
-
-        print("Erro ao enviar WhatsApp:", erro)
 
 # ============================================
 # VALIDAR LOCALIZAÇÃO
@@ -144,20 +117,21 @@ def calcular_score(dados):
     score = 0
 
     objetivo = dados.get("objetivo", "").lower()
-
     faixa = dados.get("faixa_valor", "").lower()
-
     tipo = dados.get("tipo_imovel", "").lower()
-
     whatsapp = dados.get("whatsapp", "")
 
+    # ========================================
     # INVESTIMENTO
+    # ========================================
 
     if "invest" in objetivo:
 
         score += 5
 
-    # IMÓVEIS ALTO PADRÃO
+    # ========================================
+    # VALOR ALTO
+    # ========================================
 
     if "1 milhão" in faixa:
 
@@ -167,31 +141,41 @@ def calcular_score(dados):
 
         score += 3
 
+    # ========================================
     # LOCAÇÃO
+    # ========================================
 
     if "alugar" in objetivo:
 
         score += 2
 
+    # ========================================
     # MOBILIADO
+    # ========================================
 
     if dados.get("mobiliado") == "Mobiliado":
 
         score += 2
 
-    # WHATSAPP
+    # ========================================
+    # WHATSAPP VÁLIDO
+    # ========================================
 
-    if len(whatsapp) >= 10:
+    if len(whatsapp) >= 11:
 
         score += 2
 
+    # ========================================
     # COMERCIAL
+    # ========================================
 
     if tipo == "imóvel comercial":
 
         score += 3
 
+    # ========================================
     # RURAL
+    # ========================================
 
     if tipo in [
 
@@ -206,7 +190,9 @@ def calcular_score(dados):
 
         score += 3
 
+    # ========================================
     # PERMUTA
+    # ========================================
 
     if dados.get("permuta"):
 
@@ -221,7 +207,6 @@ def calcular_score(dados):
 def classificar_perfil(dados):
 
     tipo = dados.get("tipo_imovel", "").lower()
-
     objetivo = dados.get("objetivo", "").lower()
 
     if "alugar" in objetivo:
@@ -250,6 +235,55 @@ def classificar_perfil(dados):
         return "Lançamento"
 
     return "Residencial"
+
+# ============================================
+# ENVIAR WHATSAPP
+# ============================================
+
+def enviar_whatsapp(relatorio):
+
+    try:
+
+        url = f"https://api.z-api.io/instances/{ZAPI_INSTANCE}/token/{ZAPI_TOKEN}/send-text"
+
+        payload = {
+
+            "phone": str(NUMERO_CORRETOR),
+            "message": str(relatorio)
+
+        }
+
+        headers = {
+
+            "Content-Type": "application/json"
+
+        }
+
+        response = requests.post(
+
+            url,
+            json=payload,
+            headers=headers,
+            timeout=30
+
+        )
+
+        print("====================================")
+        print("ENVIO WHATSAPP")
+        print("STATUS:", response.status_code)
+        print("RESPOSTA:", response.text)
+        print("====================================")
+
+        return response.status_code == 200
+
+    except Exception as erro:
+
+        print("====================================")
+        print("ERRO AO ENVIAR WHATSAPP")
+        print(erro)
+        print("====================================")
+
+        return False
 
 # ============================================
 # PROCESSAMENTO CHATBOT
@@ -327,7 +361,9 @@ async def processar_chatbot(mensagem, session_id):
 
         sessao["etapa"] = "tipo_imovel"
 
-        # ALUGUEL
+        # ====================================
+        # LOCAÇÃO
+        # ====================================
 
         if "alugar" in mensagem.lower():
 
@@ -351,7 +387,9 @@ async def processar_chatbot(mensagem, session_id):
 
             }
 
-        # COMPRA
+        # ====================================
+        # COMPRA / INVESTIMENTO
+        # ====================================
 
         return {
 
@@ -388,7 +426,9 @@ async def processar_chatbot(mensagem, session_id):
 
         tipo = mensagem.lower()
 
-        # RURAL
+        # ====================================
+        # IMÓVEIS RURAIS
+        # ====================================
 
         if tipo in [
 
@@ -408,7 +448,7 @@ async def processar_chatbot(mensagem, session_id):
                 "mensagem":
 
                     "Excelente 😊\n\n"
-                    "Qual o objetivo principal do imóvel?",
+                    "Qual o principal objetivo do imóvel rural?",
 
                 "opcoes": [
 
@@ -421,7 +461,9 @@ async def processar_chatbot(mensagem, session_id):
 
             }
 
+        # ====================================
         # TERRENO
+        # ====================================
 
         if tipo == "terreno":
 
@@ -444,7 +486,9 @@ async def processar_chatbot(mensagem, session_id):
 
             }
 
-        # URBANO
+        # ====================================
+        # IMÓVEIS URBANOS
+        # ====================================
 
         sessao["etapa"] = "quartos"
 
@@ -544,7 +588,9 @@ async def processar_chatbot(mensagem, session_id):
 
         sessao["quartos"] = mensagem
 
+        # ====================================
         # LOCAÇÃO
+        # ====================================
 
         if "alugar" in sessao["objetivo"].lower():
 
@@ -624,7 +670,9 @@ async def processar_chatbot(mensagem, session_id):
 
         sessao["etapa"] = "faixa_valor"
 
-        # ALUGUEL
+        # ====================================
+        # LOCAÇÃO
+        # ====================================
 
         if "alugar" in sessao["objetivo"].lower():
 
@@ -647,7 +695,9 @@ async def processar_chatbot(mensagem, session_id):
 
             }
 
+        # ====================================
         # COMPRA
+        # ====================================
 
         return {
 
@@ -744,17 +794,32 @@ async def processar_chatbot(mensagem, session_id):
 {score}
 """
 
-        enviar_whatsapp(relatorio)
+        enviado = enviar_whatsapp(relatorio)
 
         del sessoes[session_id]
+
+        if enviado:
+
+            return {
+
+                "mensagem":
+
+                    "✅ Atendimento concluído com sucesso!\n\n"
+                    "Nossa equipe já recebeu suas informações.\n\n"
+                    "Em breve um corretor entrará em contato 😊",
+
+                "link_whatsapp":
+
+                    f"https://wa.me/{NUMERO_CORRETOR}"
+
+            }
 
         return {
 
             "mensagem":
 
-                "✅ Atendimento concluído com sucesso!\n\n"
-                "Nossa equipe já recebeu suas informações.\n\n"
-                "Em breve um corretor entrará em contato 😊",
+                "⚠️ O atendimento foi concluído, porém ocorreu uma falha no envio automático.\n\n"
+                "Por favor, clique no botão abaixo para falar diretamente com o corretor.",
 
             "link_whatsapp":
 
