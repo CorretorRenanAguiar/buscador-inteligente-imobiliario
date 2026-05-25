@@ -10,9 +10,7 @@ export default function ChatBot() {
 
     const mensagensRef = useRef(null)
 
-    const [sessao] = useState(
-        Date.now().toString()
-    )
+    const [sessao] = useState(() => Date.now().toString())
 
     // =====================================
     // AUTO SCROLL
