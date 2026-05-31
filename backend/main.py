@@ -4,8 +4,12 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from pydantic import BaseModel
 
-from chatbot_engine import processar_chatbot
-from chatbot_engine import supabase
+try:
+    from backend.chatbot_engine import processar_chatbot
+    from backend.chatbot_engine import supabase
+except ImportError:
+    from chatbot_engine import processar_chatbot
+    from chatbot_engine import supabase
 
 # =====================================
 # APP
