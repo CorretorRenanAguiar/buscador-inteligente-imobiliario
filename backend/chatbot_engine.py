@@ -891,17 +891,17 @@ async def processar_chatbot(mensagem, session_id):
 
         return {
 
-            "mensagem":
+    "mensagem":
 
-                "⚠️ O atendimento foi concluído, porém ocorreu uma falha no envio automático.\n\n"
-                "Por favor, clique no botão abaixo para falar diretamente com o corretor.",
+        "✅ Atendimento concluído com sucesso!\n\n"
+        "Recebemos suas informações e seu perfil foi registrado em nosso sistema.\n\n"
+        "Clique no botão abaixo para falar com um corretor.",
 
-            "link_whatsapp":
+    "link_whatsapp":
 
-                f"https://wa.me/{NUMERO_CORRETOR}"
+        f"https://wa.me/{NUMERO_CORRETOR}"
 
-        }
-
+}
     # ========================================
     # FALLBACK
     # ========================================
