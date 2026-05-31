@@ -1,7 +1,11 @@
 import Header from "./componentes/Header"
 import Busca from "./componentes/Busca"
-import CookieBanner from "./componentes/CookieBanner"
+import TesteSupabase from "./componentes/TesteSupabase"
+
 import ChatBot from "./componentes/Chatbot"
+import CookieBanner from "./componentes/CookieBanner"
+
+
 
 function App() {
 
@@ -9,268 +13,138 @@ function App() {
 
     <div
       style={{
-        width: "100%",
         minHeight: "100vh",
-        overflowX: "auto",
-        backgroundColor: "#0f172a",
-        fontFamily: "Arial, sans-serif"
+
+        background:
+          "linear-gradient(to bottom, #0f172a, #111827)",
+
+        color: "#ffffff",
+
+        overflowX: "hidden"
       }}
     >
+
+      {/* =========================================
+          HEADER
+      ========================================= */}
 
       <Header />
 
 
 
-      {/* HERO */}
+      {/* =========================================
+          BUSCA
+      ========================================= */}
+
+      <Busca />
+
+
+
+      {/* =========================================
+          SEÇÃO PRINCIPAL
+      ========================================= */}
 
       <section
         style={{
           width: "100%",
-          minHeight: "100vh",
 
-          backgroundImage:
-            "linear-gradient(rgba(15,23,42,0.70), rgba(15,23,42,0.70)), url('https://images.unsplash.com/photo-1600585154526-990dced4db0d?q=80&w=1600')",
+          maxWidth: "1400px",
 
-          backgroundSize: "cover",
-          backgroundPosition: "center",
+          margin: "0 auto",
 
-          paddingTop: "120px",
-          paddingBottom: "120px"
+          padding:
+            "40px 20px 120px 20px",
+
+          boxSizing: "border-box"
         }}
       >
 
-
-        {/* CONTAINER */}
+        {/* =========================================
+            DESTAQUE
+        ========================================= */}
 
         <div
           style={{
-            width: "100%",
-            maxWidth: "1500px",
-            margin: "0 auto",
-            padding: "0px 30px",
-            boxSizing: "border-box"
+            background:
+              "linear-gradient(135deg, #111827, #1e293b)",
+
+            border:
+              "1px solid rgba(255,255,255,0.08)",
+
+            borderRadius: "28px",
+
+            padding: "50px",
+
+            marginBottom: "40px",
+
+            boxShadow:
+              "0px 15px 40px rgba(0,0,0,0.25)"
           }}
         >
 
-
-          {/* FAIXA */}
-
-          <div
+          <h1
             style={{
-              background:
-                "linear-gradient(90deg, rgba(212,160,23,0.20), rgba(255,255,255,0.08))",
+              fontSize: "48px",
 
-              border: "1px solid rgba(255,255,255,0.1)",
+              marginBottom: "20px",
 
-              backdropFilter: "blur(8px)",
+              color: "#ffffff",
 
-              padding: "18px 28px",
-
-              borderRadius: "18px",
-
-              marginBottom: "40px",
-
-              display: "inline-block"
+              lineHeight: "1.2"
             }}
           >
-
-            <p
-              style={{
-                color: "#facc15",
-                margin: 0,
-                fontWeight: "bold",
-                letterSpacing: "4px",
-                fontSize: "15px"
-              }}
-            >
-              IA • MACHINE LEARNING • MERCADO IMOBILIÁRIO
-            </p>
-
-          </div>
+            Plataforma Inteligente
+            para Segmentação e
+            Recomendação Imobiliária
+          </h1>
 
 
 
-          {/* TÍTULO */}
-
-          <div
+          <p
             style={{
-              maxWidth: "850px",
-              marginBottom: "60px"
+              fontSize: "18px",
+
+              lineHeight: "1.9",
+
+              color: "#d1d5db",
+
+              maxWidth: "900px"
             }}
           >
-
-            <h1
-              style={{
-                color: "#ffffff",
-                fontSize: "72px",
-                lineHeight: "1.05",
-                marginBottom: "20px"
-              }}
-            >
-              Buscador Inteligente
-              <br />
-              para o mercado
-              <br />
-              imobiliário
-            </h1>
-
-
-            <p
-              style={{
-                color: "#d1d5db",
-                fontSize: "22px",
-                lineHeight: "1.8"
-              }}
-            >
-              Plataforma de recomendação imobiliária
-              baseada em Inteligência Artificial para
-              segmentação automatizada de leads,
-              análise comportamental e recomendação
-              inteligente de imóveis.
-            </p>
-
-          </div>
-
-
-
-          {/* CARROSSEL DE IMÓVEIS */}
-
-          <div
-            style={{
-              display: "flex",
-              gap: "24px",
-              overflowX: "auto",
-              paddingBottom: "15px",
-              marginBottom: "50px"
-            }}
-          >
-
-            {[
-              {
-                titulo: "Apartamento 2 quartos",
-                bairro: "São Pedro",
-                preco: "R$ 219.000",
-                imagem:
-                  "https://images.unsplash.com/photo-1502672260266-1c1ef2d93688?q=80&w=1200"
-              },
-
-              {
-                titulo: "Casa moderna",
-                bairro: "Jardim da Serra",
-                preco: "R$ 780.000",
-                imagem:
-                  "https://images.unsplash.com/photo-1600585154526-990dced4db0d?q=80&w=1200"
-              },
-
-              {
-                titulo: "Cobertura premium",
-                bairro: "Cascatinha",
-                preco: "R$ 1.290.000",
-                imagem:
-                  "https://images.unsplash.com/photo-1494526585095-c41746248156?q=80&w=1200"
-              },
-
-              {
-                titulo: "Apartamento Studio",
-                bairro: "Centro",
-                preco: "R$ 189.000",
-                imagem:
-                  "https://images.unsplash.com/photo-1484154218962-a197022b5858?q=80&w=1200"
-              }
-            ].map((imovel, index) => (
-
-              <div
-                key={index}
-
-                style={{
-                  minWidth: "320px",
-
-                  backgroundColor:
-                    "rgba(255,255,255,0.08)",
-
-                  borderRadius: "24px",
-
-                  overflow: "hidden",
-
-                  backdropFilter: "blur(8px)",
-
-                  border:
-                    "1px solid rgba(255,255,255,0.08)"
-                }}
-              >
-
-                <img
-                  src={imovel.imagem}
-
-                  style={{
-                    width: "100%",
-                    height: "220px",
-                    objectFit: "cover"
-                  }}
-                />
-
-
-                <div
-                  style={{
-                    padding: "22px"
-                  }}
-                >
-
-                  <h3
-                    style={{
-                      color: "#ffffff",
-                      marginBottom: "10px"
-                    }}
-                  >
-                    {imovel.titulo}
-                  </h3>
-
-
-                  <p
-                    style={{
-                      color: "#cbd5e1",
-                      marginBottom: "15px"
-                    }}
-                  >
-                    {imovel.bairro}
-                  </p>
-
-
-                  <h2
-                    style={{
-                      color: "#facc15"
-                    }}
-                  >
-                    {imovel.preco}
-                  </h2>
-
-                </div>
-
-              </div>
-
-            ))}
-
-          </div>
-
-
-
-          {/* BUSCA */}
-
-          <Busca />
+            Sistema inteligente baseado em
+            Inteligência Artificial (IA),
+            Machine Learning (ML),
+            análise comportamental,
+            segmentação inteligente de leads
+            e recomendação automatizada
+            de imóveis.
+          </p>
 
         </div>
+
+
+
+        {/* =========================================
+            BOTÃO TESTE SUPABASE
+        ========================================= */}
+
+        <TesteSupabase />
 
       </section>
 
 
 
-      {/* CHAT */}
+      {/* =========================================
+          CHATBOT
+      ========================================= */}
 
       <ChatBot />
 
 
 
-      {/* COOKIE */}
+      {/* =========================================
+          COOKIES
+      ========================================= */}
 
       <CookieBanner />
 

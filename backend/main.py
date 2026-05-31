@@ -6,6 +6,8 @@ from pydantic import BaseModel
 
 from backend.chatbot_engine import processar_chatbot
 
+from backend.chatbot_engine import supabase
+
 # =====================================
 # APP
 # =====================================
@@ -57,6 +59,47 @@ def home():
             "RA Inteligência Imobiliária"
 
     }
+
+# =====================================
+# LISTAR LEADS
+# =====================================
+
+@app.get("/leads")
+
+async def listar_leads():
+
+    try:
+
+        resposta = (
+
+    supabase
+    .table("leads")
+    .select("*")
+    .limit(100)
+    .execute()
+
+)
+        
+
+        return {
+
+            "status": "sucesso",
+
+            "total": len(resposta.data),
+
+            "dados": resposta.data
+
+        }
+
+    except Exception as erro:
+
+        return {
+
+            "status": "erro",
+
+            "mensagem": str(erro)
+
+        }
 
 # =====================================
 # CHAT
