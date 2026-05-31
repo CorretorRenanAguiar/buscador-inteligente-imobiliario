@@ -4,8 +4,6 @@ from dotenv import load_dotenv
 
 import os
 
-
-
 # =========================================
 # LOAD ENV
 # =========================================
@@ -13,35 +11,18 @@ import os
 load_dotenv()
 
 
-
 # =========================================
 # VARIÁVEIS
 # =========================================
 
-SUPABASE_URL = os.getenv(
-
-    "SUPABASE_URL"
-
-)
+SUPABASE_URL = os.getenv("SUPABASE_URL")
 
 
-
-SUPABASE_KEY = os.getenv(
-
-    "SUPABASE_KEY"
-
-)
-
+SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 
 
 # =========================================
 # CLIENT SUPABASE
 # =========================================
 
-supabase = create_client(
-
-    SUPABASE_URL,
-
-    SUPABASE_KEY
-
-)
+supabase = create_client(SUPABASE_URL, SUPABASE_KEY)

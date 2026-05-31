@@ -250,12 +250,31 @@ def salvar_lead_supabase(dados):
         payload = {
             "telefone": dados.get("whatsapp"),
             "bairro": dados.get("localizacao"),
+            "bairro_interesse": dados.get("localizacao"),
             "faixa_preco_interesse": dados.get("faixa_valor"),
-            "tipo_interesse": dados.get("tipo_imovel"),
+            "tipo_interesse": dados.get("objetivo"),
+            "tipo_imovel": dados.get("tipo_imovel"),
             "objetivo": dados.get("objetivo"),
+            "quartos": dados.get("quartos"),
+            "banheiros": dados.get("banheiros"),
+            "vagas_garagem": dados.get("vagas_garagem"),
+            "aceita_pet": dados.get("aceita_pet"),
+            "momento_compra": dados.get("momento_compra"),
+            "financiamento": dados.get("financiamento"),
+            "fgts": dados.get("fgts"),
+            "renda_familiar": dados.get("renda_familiar"),
             "origem_lead": "chatbot",
             "score_lead": score,
             "classificacao_lead": classificacao,
+            "observacoes": str(
+                {
+                    "perfil": classificar_perfil(dados),
+                    "objetivo_rural": dados.get("objetivo_rural"),
+                    "hectares": dados.get("hectares"),
+                    "mobiliado": dados.get("mobiliado"),
+                    "permuta": dados.get("permuta"),
+                }
+            ),
         }
 
         resposta = supabase.table("leads").insert(payload).execute()
