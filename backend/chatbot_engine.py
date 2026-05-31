@@ -4,6 +4,7 @@
 
 import os
 import re
+import requests
 from supabase import create_client
 from dotenv import load_dotenv
 
@@ -17,8 +18,9 @@ load_dotenv()
 # VARIÁVEIS DE AMBIENTE
 # ============================================
 
+ZAPI_INSTANCE = os.getenv("ZAPI_INSTANCE")
+ZAPI_TOKEN = os.getenv("ZAPI_TOKEN")
 NUMERO_CORRETOR = os.getenv("NUMERO_CORRETOR")
-
 # ============================================
 # SUPABASE
 # ============================================
@@ -30,7 +32,6 @@ supabase = create_client(
     os.getenv("SUPABASE_KEY")
 
 )
-
 # ============================================
 # SESSÕES
 # ============================================
@@ -244,23 +245,6 @@ def classificar_perfil(dados):
         return "Lançamento"
 
     return "Residencial"
-
-# ============================================
-# CLASSIFICAR LEAD
-# ============================================
-
-def classificar_lead(score):
-
-    if score >= 8:
-
-        return "quente"
-
-    elif score >= 4:
-
-        return "morno"
-
-    return "frio"
-
 # ============================================
 # SALVAR LEAD SUPABASE
 # ============================================
@@ -271,7 +255,15 @@ def salvar_lead_supabase(dados):
 
         score = calcular_score(dados)
 
-        classificacao = classificar_lead(score)
+        classificacao = "frio"
+
+        if score >= 8:
+
+            classificacao = "quente"
+
+        elif score >= 4:
+
+            classificacao = "morno"
 
         payload = {
 
@@ -313,7 +305,6 @@ def salvar_lead_supabase(dados):
 
         print("====================================")
         print("LEAD SALVO SUPABASE")
-        print(payload)
         print(resposta)
         print("====================================")
 
@@ -323,6 +314,61 @@ def salvar_lead_supabase(dados):
 
         print("====================================")
         print("ERRO SUPABASE")
+        print(str(erro))
+        print("====================================")
+
+        return False
+# ============================================
+# ENVIAR WHATSAPP
+# ============================================
+
+def enviar_whatsapp(relatorio):
+
+    try:
+
+        print("====================================")
+        print("FUNÇÃO ENVIAR WHATSAPP EXECUTADA")
+        print("====================================")
+
+        url = f"https://api.z-api.io/instances/{ZAPI_INSTANCE}/token/{ZAPI_TOKEN}/send-text"
+
+        payload = {
+
+            "phone": str(NUMERO_CORRETOR),
+            "message": str(relatorio)
+
+        }
+
+        headers = {
+
+            "Content-Type": "application/json"
+
+        }
+
+        print("URL:", url)
+        print("PAYLOAD:", payload)
+
+        response = requests.post(
+
+            url,
+            json=payload,
+            headers=headers,
+            timeout=30
+
+        )
+
+        print("====================================")
+        print("ENVIO WHATSAPP")
+        print("STATUS:", response.status_code)
+        print("RESPOSTA:", response.text)
+        print("====================================")
+
+        return response.status_code == 200
+
+    except Exception as erro:
+
+        print("====================================")
+        print("ERRO AO ENVIAR WHATSAPP")
         print(str(erro))
         print("====================================")
 
@@ -461,6 +507,10 @@ async def processar_chatbot(mensagem, session_id):
 
         tipo = mensagem.lower()
 
+        # ====================================
+        # RURAL
+        # ====================================
+
         if tipo in [
 
             "granja",
@@ -492,6 +542,10 @@ async def processar_chatbot(mensagem, session_id):
 
             }
 
+        # ====================================
+        # TERRENO
+        # ====================================
+
         if tipo == "terreno":
 
             sessao["etapa"] = "objetivo_terreno"
@@ -512,6 +566,10 @@ async def processar_chatbot(mensagem, session_id):
                 ]
 
             }
+
+        # ====================================
+        # IMÓVEIS URBANOS
+        # ====================================
 
         sessao["etapa"] = "quartos"
 
@@ -744,7 +802,7 @@ async def processar_chatbot(mensagem, session_id):
             "mensagem":
 
                 "Perfeito 😊\n\n"
-                "Informe seu WhatsApp com DDD para continuar.",
+                "Informe seu WhatsApp com DDD para que um corretor entre em contato.",
 
             "opcoes": []
 
@@ -756,6 +814,8 @@ async def processar_chatbot(mensagem, session_id):
 
     if etapa == "whatsapp":
 
+        print("ENTROU ETAPA WHATSAPP")
+
         whatsapp = re.sub(r"\D", "", mensagem)
 
         sessao["whatsapp"] = whatsapp
@@ -764,23 +824,64 @@ async def processar_chatbot(mensagem, session_id):
 
         score = calcular_score(sessao)
 
-        classificacao = classificar_lead(score)
+        relatorio = f"""
 
-        salvou = salvar_lead_supabase(sessao)
+🚨 NOVO LEAD IMOBILIÁRIO
+
+👤 Perfil:
+{perfil}
+
+🎯 Objetivo:
+{sessao.get("objetivo")}
+
+🏠 Tipo imóvel:
+{sessao.get("tipo_imovel")}
+
+🛏️ Quartos:
+{sessao.get("quartos", "Não informado")}
+
+🛋️ Mobiliado:
+{sessao.get("mobiliado", "Não informado")}
+
+🌱 Objetivo rural:
+{sessao.get("objetivo_rural", "Não informado")}
+
+📏 Área/Hectares:
+{sessao.get("hectares", "Não informado")}
+
+📍 Localização:
+{sessao.get("localizacao")}
+
+💰 Faixa valor:
+{sessao.get("faixa_valor")}
+
+🔁 Permuta:
+{"Sim" if sessao.get("permuta") else "Não"}
+
+📱 WhatsApp cliente:
+{whatsapp}
+
+🔥 Score Lead:
+{score}
+"""
+
+        print("RELATORIO GERADO")
+        salvar_lead_supabase(sessao)
+        enviado = enviar_whatsapp(relatorio)
+
+        print("RESULTADO ENVIO:", enviado)
 
         del sessoes[session_id]
 
-        if salvou:
+        if enviado:
 
             return {
 
                 "mensagem":
 
-                    f"✅ Lead salvo com sucesso!\n\n"
-                    f"Perfil identificado: {perfil}\n"
-                    f"Score do lead: {score}\n"
-                    f"Classificação: {classificacao}\n\n"
-                    f"Em breve nossa equipe entrará em contato 😊",
+                    "✅ Atendimento concluído com sucesso!\n\n"
+                    "Nossa equipe já recebeu suas informações.\n\n"
+                    "Em breve um corretor entrará em contato 😊",
 
                 "link_whatsapp":
 
@@ -792,10 +893,12 @@ async def processar_chatbot(mensagem, session_id):
 
             "mensagem":
 
-                "⚠️ Ocorreu um erro ao salvar seus dados.\n\n"
-                "Tente novamente em instantes.",
+                "⚠️ O atendimento foi concluído, porém ocorreu uma falha no envio automático.\n\n"
+                "Por favor, clique no botão abaixo para falar diretamente com o corretor.",
 
-            "opcoes": []
+            "link_whatsapp":
+
+                f"https://wa.me/{NUMERO_CORRETOR}"
 
         }
 
