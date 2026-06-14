@@ -4,106 +4,124 @@
 
 import requests
 import re
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # ============================================
-# CONFIGURAÇÕES Z-API
+# CONFIGURAÇÕES
 # ============================================
 
-ZAPI_INSTANCE = "3F2EFD4EDB9BB294D6392E60CA768835"
+ZAPI_INSTANCE = os.getenv("ZAPI_INSTANCE", "")
+ZAPI_TOKEN = os.getenv("ZAPI_TOKEN", "")
+ZAPI_CLIENT_TOKEN = os.getenv("ZAPI_CLIENT_TOKEN", "")
+NUMERO_CORRETOR = os.getenv("NUMERO_CORRETOR", "")
 
-ZAPI_TOKEN = "6F1EA3F8D36CC67014A3B84B"
-
-ZAPI_CLIENT_TOKEN = "F5de8d99a8ed846b6a50576a80f6240acS"
-
-NUMERO_CORRETOR = "5532998148333"
-
-# ============================================
-# SESSÕES
-# ============================================
+PALAVRAS_PERMUTA = ["permuta", "troca", "permutar"]
+LOCALIZACOES_INVALIDAS = ["aqui", "lá", "ali", "acolá"]
 
 sessoes = {}
 
 # ============================================
-# PALAVRAS DE PERMUTA
-# ============================================
 
-PALAVRAS_PERMUTA = [
 
-    "permuta",
-    "troca",
-    "aceita carro",
-    "aceita veículo",
-    "aceita veiculo",
-    "aceita imóvel",
-    "aceita imovel",
-    "aceita terreno",
-    "aceitar carro",
-    "aceitar veículo",
-    "aceitar veiculo",
-    "aceitar imóvel",
-    "aceitar imovel",
-    "aceitar terreno"
+def criar_relatorio(perfil, sessao, whatsapp, score):
+    relatorio = f"""
+🚨 NOVO LEAD IMOBILIÁRIO
 
-]
+👤 Perfil:
+{perfil}
 
-# ============================================
-# LOCALIZAÇÕES INVÁLIDAS
-# ============================================
+🎯 Objetivo:
+{sessao.get('objetivo', 'Não informado')}
 
-LOCALIZACOES_INVALIDAS = [
+🏡 Uso do imóvel:
+{sessao.get('uso_imovel', 'Não informado')}
 
-    "aaa",
-    "bbb",
-    "ccc",
-    "abc",
-    "teste",
-    "123",
-    "piru",
-    "asdf",
-    "qwerty",
-    "esse",
-    "isso"
+🔑 Primeiro imóvel:
+{sessao.get('primeiro_imovel', 'Não informado')}
 
-]
+🏠 Tipo imóvel:
+{sessao.get('tipo_imovel')}
 
-# ============================================
+🛏️ Quartos:
+{sessao.get('quartos', 'Não informado')}
+🚿 Banheiros:
+{sessao.get('banheiros', 'Não informado')}
+
+🚗 Vagas:
+{sessao.get('vagas', 'Não informado')}
+🐶 Possui pet:
+{sessao.get('pet', 'Não informado')}
+
+🛋️ Mobiliado:
+{sessao.get('mobiliado', 'Não informado')}
+
+🌱 Objetivo rural:
+{sessao.get('objetivo_rural', 'Não informado')}
+
+📏 Área/Hectares:
+{sessao.get('hectares', 'Não informado')}
+
+📍 Localização:
+{sessao.get('localizacao')}
+
+💰 Faixa valor:
+{sessao.get('faixa_valor')}
+🏦 Financiamento:
+{sessao.get('financiamento', 'Não informado')}
+
+💵 FGTS:
+{sessao.get('fgts', 'Não informado')}
+👨‍👩‍👧‍👦 Renda familiar:
+{sessao.get('renda_familiar', 'Não informado')}
+
+⏳ Prazo compra:
+{sessao.get('prazo_compra', 'Não informado')}
+
+🔁 Permuta:
+{'Sim' if sessao.get('permuta') else 'Não'}
+
+📱 WhatsApp cliente:
+{whatsapp}
+
+🔥 Score Lead:
+{score}
+"""
+    return relatorio
+
+
 # ENVIAR WHATSAPP
 # ============================================
 
-def enviar_whatsapp(relatorio):
+
+def enviar_whatsapp(relatorio, phone=None):
+    """Envia o relatório por Z-API para `phone` ou `NUMERO_CORRETOR`.
+
+    Retorna True se a tentativa de envio foi iniciada, False caso contrário.
+    """
+    destino = phone or NUMERO_CORRETOR
+
+    if not destino:
+        print("Aviso: NUMERO_CORRETOR não configurado; envio Z-API pulado.")
+        return False
 
     try:
-
         url = f"https://api.z-api.io/instances/{ZAPI_INSTANCE}/token/{ZAPI_TOKEN}/send-text"
-
-        headers = {
-
-            "Client-Token": ZAPI_CLIENT_TOKEN
-
-        }
-
-        payload = {
-
-            "phone": NUMERO_CORRETOR,
-            "message": relatorio
-
-        }
-
-        requests.post(
-
-            url,
-            json=payload,
-            headers=headers
-
-        )
-
+        headers = {"Client-Token": ZAPI_CLIENT_TOKEN}
+        payload = {"phone": destino, "message": relatorio}
+        requests.post(url, json=payload, headers=headers)
+        return True
     except Exception as erro:
-
         print("Erro Z-API:", erro)
+        return False
+
 
 # ============================================
 # DETECTAR PERMUTA
 # ============================================
+
 
 def detectar_permuta(texto):
 
@@ -117,9 +135,11 @@ def detectar_permuta(texto):
 
     return False
 
+
 # ============================================
 # VALIDAR LOCALIZAÇÃO
 # ============================================
+
 
 def validar_localizacao(texto):
 
@@ -135,9 +155,11 @@ def validar_localizacao(texto):
 
     return True
 
+
 # ============================================
 # CALCULAR SCORE
 # ============================================
+
 
 def calcular_score(dados):
 
@@ -152,50 +174,6 @@ def calcular_score(dados):
     whatsapp = dados.get("whatsapp", "")
 
     # ========================================
-    # INVESTIMENTO
-    # ========================================
-
-    if "invest" in objetivo:
-
-        score += 5
-
-    # ========================================
-    # VALOR ALTO
-    # ========================================
-
-    if "1 milhão" in faixa:
-
-        score += 5
-
-    elif "500 mil" in faixa:
-
-        score += 3
-
-    # ========================================
-    # LOCAÇÃO
-    # ========================================
-
-    if "alugar" in objetivo:
-
-        score += 2
-
-    # ========================================
-    # MOBILIADO
-    # ========================================
-
-    if dados.get("mobiliado") == "Mobiliado":
-
-        score += 2
-
-    # ========================================
-    # WHATSAPP VÁLIDO
-    # ========================================
-
-    if len(whatsapp) >= 10:
-
-        score += 2
-
-    # ========================================
     # IMÓVEL COMERCIAL
     # ========================================
 
@@ -207,16 +185,7 @@ def calcular_score(dados):
     # RURAL
     # ========================================
 
-    if tipo in [
-
-        "fazenda",
-        "granja",
-        "chácara",
-        "chacara",
-        "sítio",
-        "sitio"
-
-    ]:
+    if tipo in ["fazenda", "granja", "chácara", "chacara", "sítio", "sitio"]:
 
         score += 3
 
@@ -230,9 +199,11 @@ def calcular_score(dados):
 
     return score
 
+
 # ============================================
 # CLASSIFICAR PERFIL
 # ============================================
+
 
 def classificar_perfil(dados):
 
@@ -240,16 +211,7 @@ def classificar_perfil(dados):
 
     objetivo = dados.get("objetivo", "").lower()
 
-    if tipo in [
-
-        "fazenda",
-        "granja",
-        "chácara",
-        "chacara",
-        "sítio",
-        "sitio"
-
-    ]:
+    if tipo in ["fazenda", "granja", "chácara", "chacara", "sítio", "sitio"]:
 
         return "Rural"
 
@@ -267,9 +229,11 @@ def classificar_perfil(dados):
 
     return "Residencial"
 
+
 # ============================================
 # PROCESSAMENTO PRINCIPAL
 # ============================================
+
 
 async def processar_chatbot(mensagem, session_id):
 
@@ -281,30 +245,16 @@ async def processar_chatbot(mensagem, session_id):
 
     if session_id not in sessoes:
 
-        sessoes[session_id] = {
-
-            "etapa": "objetivo"
-
-        }
+        sessoes[session_id] = {"etapa": "objetivo"}
 
         return {
-
-            "mensagem":
-
+            "mensagem": (
                 "Olá 👋\n\n"
                 "Sou a assistente virtual imobiliária de Renan Aguiar.\n\n"
                 "Vou entender rapidamente o perfil do imóvel que você procura 😊\n\n"
-                "Qual é o seu objetivo?",
-
-            "opcoes": [
-
-                "Comprar imóvel",
-                "Alugar imóvel",
-                "Investir",
-                "Sou corretor"
-
-            ]
-
+                "Qual é o seu objetivo?"
+            ),
+            "opcoes": ["Comprar imóvel", "Alugar imóvel", "Investir", "Sou corretor"],
         }
 
     sessao = sessoes[session_id]
@@ -322,15 +272,10 @@ async def processar_chatbot(mensagem, session_id):
         sessao["etapa"] = "whatsapp_permuta"
 
         return {
-
-            "mensagem":
-
-                "Entendi 😊\n\n"
-                "Casos de permuta exigem análise personalizada.\n\n"
-                "Informe seu WhatsApp com DDD para que um corretor especializado entre em contato.",
-
-            "opcoes": []
-
+            "mensagem": "Entendi 😊\n\n"
+            "Casos de permuta exigem análise personalizada.\n\n"
+            "Informe seu WhatsApp com DDD para que um corretor especializado entre em contato.",
+            "opcoes": [],
         }
 
     # ========================================
@@ -350,23 +295,15 @@ async def processar_chatbot(mensagem, session_id):
         if "alugar" in mensagem.lower():
 
             return {
-
-                "mensagem":
-
-                    "Perfeito 👍\n\n"
-                    "Qual tipo de imóvel você procura?",
-
+                "mensagem": "Perfeito 👍\n\n" "Qual tipo de imóvel você procura?",
                 "opcoes": [
-
                     "Casa",
                     "Apartamento",
                     "Kitnet",
                     "Cobertura",
                     "Terreno",
-                    "Imóvel comercial"
-
-                ]
-
+                    "Imóvel comercial",
+                ],
             }
 
         # ====================================
@@ -374,14 +311,8 @@ async def processar_chatbot(mensagem, session_id):
         # ====================================
 
         return {
-
-            "mensagem":
-
-                "Perfeito 👍\n\n"
-                "Qual tipo de imóvel você procura?",
-
+            "mensagem": "Perfeito 👍\n\n" "Qual tipo de imóvel você procura?",
             "opcoes": [
-
                 "Casa",
                 "Apartamento",
                 "Kitnet",
@@ -392,14 +323,14 @@ async def processar_chatbot(mensagem, session_id):
                 "Fazenda",
                 "Terreno",
                 "Lançamento",
-                "Imóvel comercial"
-
-            ]
-
+                "Imóvel comercial",
+            ],
         }
 
-    # ========================================
+    # # ========================================
+
     # TIPO IMÓVEL
+
     # ========================================
 
     if etapa == "tipo_imovel":
@@ -412,35 +343,13 @@ async def processar_chatbot(mensagem, session_id):
         # RURAL
         # ====================================
 
-        if tipo in [
-
-            "granja",
-            "chácara",
-            "chacara",
-            "fazenda",
-            "sítio",
-            "sitio"
-
-        ]:
+        if tipo in ["granja", "chácara", "chacara", "fazenda", "sítio", "sitio"]:
 
             sessao["etapa"] = "objetivo_rural"
 
             return {
-
-                "mensagem":
-
-                    "Excelente 😊\n\n"
-                    "Qual o objetivo principal do imóvel?",
-
-                "opcoes": [
-
-                    "Lazer",
-                    "Moradia",
-                    "Produção rural",
-                    "Investimento"
-
-                ]
-
+                "mensagem": "Excelente 😊\n\n" "Qual o objetivo principal do imóvel?",
+                "opcoes": ["Lazer", "Moradia", "Produção rural", "Investimento"],
             }
 
         # ====================================
@@ -452,44 +361,54 @@ async def processar_chatbot(mensagem, session_id):
             sessao["etapa"] = "objetivo_terreno"
 
             return {
-
-                "mensagem":
-
-                    "Perfeito 👍\n\n"
-                    "Qual a finalidade do terreno?",
-
+                "mensagem": "Perfeito 👍\n\n" "Qual a finalidade do terreno?",
                 "opcoes": [
-
                     "Construir para morar",
                     "Investimento",
-                    "Construção comercial"
-
-                ]
-
+                    "Construção comercial",
+                ],
             }
 
         # ====================================
-        # URBANO
+        # USO DO IMÓVEL
         # ====================================
+
+        sessao["etapa"] = "uso_imovel"
+
+        return {
+            "mensagem": "Qual será o principal uso do imóvel?",
+            "opcoes": ["Moradia", "Investimento", "Moradia e investimento"],
+        }
+
+    # ========================================
+
+    # USO IMÓVEL
+
+    # ========================================
+
+    if etapa == "uso_imovel":
+
+        sessao["uso_imovel"] = mensagem
+
+        sessao["etapa"] = "primeiro_imovel"
+
+        return {"mensagem": "Será seu primeiro imóvel?", "opcoes": ["Sim", "Não"]}
+
+    # ========================================
+
+    # PRIMEIRO IMÓVEL
+
+    # ========================================
+
+    if etapa == "primeiro_imovel":
+
+        sessao["primeiro_imovel"] = mensagem
 
         sessao["etapa"] = "quartos"
 
         return {
-
-            "mensagem":
-
-                "Entendi 👍\n\n"
-                "Quantos quartos você deseja?",
-
-            "opcoes": [
-
-                "1 quarto",
-                "2 quartos",
-                "3 quartos",
-                "4 quartos ou mais"
-
-            ]
-
+            "mensagem": "Quantos quartos você deseja?",
+            "opcoes": ["1 quarto", "2 quartos", "3 quartos", "4 quartos ou mais"],
         }
 
     # ========================================
@@ -503,21 +422,13 @@ async def processar_chatbot(mensagem, session_id):
         sessao["etapa"] = "hectares"
 
         return {
-
-            "mensagem":
-
-                "Ótimo 👍\n\n"
-                "Qual tamanho aproximado procura?",
-
+            "mensagem": "Ótimo 👍\n\n" "Qual tamanho aproximado procura?",
             "opcoes": [
-
                 "Até 1 hectare",
                 "1 a 5 hectares",
                 "5 a 20 hectares",
-                "Acima de 20 hectares"
-
-            ]
-
+                "Acima de 20 hectares",
+            ],
         }
 
     # ========================================
@@ -531,14 +442,8 @@ async def processar_chatbot(mensagem, session_id):
         sessao["etapa"] = "localizacao"
 
         return {
-
-            "mensagem":
-
-                "Perfeito 😊\n\n"
-                "Qual localização deseja para o imóvel?",
-
-            "opcoes": []
-
+            "mensagem": "Perfeito 😊\n\n" "Qual localização deseja para o imóvel?",
+            "opcoes": [],
         }
 
     # ========================================
@@ -552,14 +457,8 @@ async def processar_chatbot(mensagem, session_id):
         sessao["etapa"] = "localizacao"
 
         return {
-
-            "mensagem":
-
-                "Excelente 👍\n\n"
-                "Qual localização deseja para o terreno?",
-
-            "opcoes": []
-
+            "mensagem": "Excelente 👍\n\n" "Qual localização deseja para o terreno?",
+            "opcoes": [],
         }
 
     # ========================================
@@ -570,67 +469,94 @@ async def processar_chatbot(mensagem, session_id):
 
         sessao["quartos"] = mensagem
 
-        # ====================================
-        # ALUGUEL
-        # ====================================
+        sessao["etapa"] = "banheiros"
+
+        return {
+            "mensagem": "Perfeito 👍\n\n" "Quantos banheiros você deseja?",
+            "opcoes": ["1 banheiro", "2 banheiros", "3 banheiros", "4 ou mais"],
+        }
+
+    # ========================================
+
+    # BANHEIROS
+
+    # ========================================
+
+    if etapa == "banheiros":
+
+        sessao["banheiros"] = mensagem
+
+        sessao["etapa"] = "vagas"
+
+        return {
+            "mensagem": "Ótimo 😊\n\n" "Quantas vagas de garagem você precisa?",
+            "opcoes": ["Sem garagem", "1 vaga", "2 vagas", "3 ou mais"],
+        }
+
+    # ========================================
+
+    # VAGAS
+
+    # ========================================
+
+    if etapa == "vagas":
+
+        sessao["vagas"] = mensagem
 
         if "alugar" in sessao["objetivo"].lower():
 
             sessao["etapa"] = "mobiliado"
 
             return {
-
-                "mensagem":
-
-                    "Perfeito 👍\n\n"
-                    "Você procura imóvel:",
-
-                "opcoes": [
-
-                    "Mobiliado",
-                    "Semimobiliado",
-                    "Não importa"
-
-                ]
-
+                "mensagem": "Perfeito 👍\n\n" "Você procura imóvel:",
+                "opcoes": ["Mobiliado", "Semimobiliado", "Não importa"],
             }
 
         sessao["etapa"] = "localizacao"
 
         return {
-
-            "mensagem":
-
-                "Perfeito 👍\n\n"
-                "Qual localização deseja para o imóvel?",
-
-            "opcoes": []
-
+            "mensagem": "Perfeito 👍\n\n" "Qual localização deseja para o imóvel?",
+            "opcoes": [],
         }
 
     # ========================================
+
     # MOBILIADO
+
     # ========================================
 
     if etapa == "mobiliado":
 
         sessao["mobiliado"] = mensagem
 
-        sessao["etapa"] = "localizacao"
+        sessao["etapa"] = "pet"
 
         return {
-
-            "mensagem":
-
-                "Excelente 😊\n\n"
-                "Qual localização deseja para o imóvel?",
-
-            "opcoes": []
-
+            "mensagem": "Você possui animais de estimação?",
+            "opcoes": ["Sim", "Não"],
         }
 
     # ========================================
+
+    # PET
+
+    # ========================================
+
+    if etapa == "pet":
+
+        sessao["pet"] = mensagem
+
+        sessao["etapa"] = "localizacao"
+
+        return {
+            "mensagem": "Excelente 😊\n\n" "Qual localização deseja para o imóvel?",
+            "opcoes": [],
+        }
+
+    # ========================================
+
     # LOCALIZAÇÃO
+
     # ========================================
 
     if etapa == "localizacao":
@@ -638,100 +564,132 @@ async def processar_chatbot(mensagem, session_id):
         if not validar_localizacao(mensagem):
 
             return {
-
-                "mensagem":
-
-                    "Não consegui identificar a localização 😊\n\n"
-                    "Pode informar a cidade, bairro, região ou referência desejada?",
-
-                "opcoes": []
-
+                "mensagem": "Não consegui identificar a localização 😊\n\n"
+                "Pode informar a cidade, bairro, região ou referência desejada?",
+                "opcoes": [],
             }
 
         sessao["localizacao"] = mensagem
 
         sessao["etapa"] = "faixa_valor"
 
-        # ====================================
-        # ALUGUEL
-        # ====================================
-
         if "alugar" in sessao["objetivo"].lower():
 
             return {
-
-                "mensagem":
-
-                    "Ótimo 😊\n\n"
-                    "Qual faixa de aluguel você procura?",
-
+                "mensagem": "Ótimo 😊\n\n" "Qual faixa de aluguel você procura?",
                 "opcoes": [
-
                     "Até R$ 800",
                     "R$ 800 a R$ 1.500",
                     "R$ 1.500 a R$ 3.000",
                     "R$ 3.000 a R$ 5.000",
-                    "Acima de R$ 5.000"
-
-                ]
-
+                    "Acima de R$ 5.000",
+                ],
             }
 
-        # ====================================
-        # COMPRA
-        # ====================================
-
         return {
-
-            "mensagem":
-
-                "Excelente 😊\n\n"
-                "Qual faixa de valor você procura?",
-
+            "mensagem": "Excelente 😊\n\n" "Qual faixa de valor você procura?",
             "opcoes": [
-
                 "Até R$ 150 mil",
                 "R$ 150 mil a R$ 300 mil",
                 "R$ 300 mil a R$ 500 mil",
                 "R$ 500 mil a R$ 1 milhão",
-                "Acima de R$ 1 milhão"
-
-            ]
-
+                "Acima de R$ 1 milhão",
+            ],
         }
 
     # ========================================
+
     # FAIXA VALOR
+
     # ========================================
 
     if etapa == "faixa_valor":
-
         sessao["faixa_valor"] = mensagem
 
-        sessao["etapa"] = "whatsapp"
+        sessao["etapa"] = "financiamento"
 
         return {
+            "mensagem": "Você pretende utilizar financiamento?",
+            "opcoes": ["Sim", "Não", "Ainda vou verificar"],
+        }
 
-            "mensagem":
+    # ========================================
 
-                "Perfeito 😊\n\n"
-                "Informe seu WhatsApp com DDD para que um corretor entre em contato.",
+    # FINANCIAMENTO
 
-            "opcoes": []
+    # ========================================
 
+    if etapa == "financiamento":
+        sessao["financiamento"] = mensagem
+
+        sessao["etapa"] = "fgts"
+
+        return {
+            "mensagem": "Pretende utilizar FGTS?",
+            "opcoes": ["Sim", "Não", "Não sei"],
+        }
+
+    # ========================================
+
+    # FGTS
+
+    # ========================================
+
+    if etapa == "fgts":
+
+        sessao["fgts"] = mensagem
+
+        sessao["etapa"] = "renda_familiar"
+
+        return {
+            "mensagem": "Qual sua renda familiar aproximada?",
+            "opcoes": [
+                "Até R$ 3.000",
+                "R$ 3.000 a R$ 5.000",
+                "R$ 5.000 a R$ 8.000",
+                "Acima de R$ 8.000",
+            ],
+        }
+
+    # ========================================
+
+    # RENDA FAMILIAR
+
+    # ========================================
+
+    if etapa == "renda_familiar":
+        sessao["renda_familiar"] = mensagem
+        sessao["etapa"] = "prazo_compra"
+        return {
+            "mensagem": "Quando pretende comprar o imóvel?",
+            "opcoes": [
+                "Imediatamente",
+                "Até 3 meses",
+                "Até 6 meses",
+                "Mais de 6 meses",
+            ],
+        }
+
+    # ========================================
+
+    # PRAZO COMPRA
+
+    # ========================================
+
+    if etapa == "prazo_compra":
+        sessao["prazo_compra"] = mensagem
+        sessao["etapa"] = "whatsapp"
+        return {
+            "mensagem": "Perfeito 😊\n\n"
+            "Informe seu WhatsApp com DDD para continuar.",
+            "opcoes": [],
         }
 
     # ========================================
     # WHATSAPP
     # ========================================
 
-    if etapa in [
-
-        "whatsapp",
-        "whatsapp_permuta"
-
-    ]:
-
+    if etapa in ["whatsapp", "whatsapp_permuta"]:
         whatsapp = re.sub(r"\D", "", mensagem)
 
         sessao["whatsapp"] = whatsapp
@@ -740,74 +698,33 @@ async def processar_chatbot(mensagem, session_id):
 
         score = calcular_score(sessao)
 
-        relatorio = f"""
+        relatorio = criar_relatorio(perfil, sessao, whatsapp, score)
 
-🚨 NOVO LEAD IMOBILIÁRIO
-
-👤 Perfil:
-{perfil}
-
-🎯 Objetivo:
-{sessao.get('objetivo')}
-
-🏠 Tipo imóvel:
-{sessao.get('tipo_imovel')}
-
-🛏️ Quartos:
-{sessao.get('quartos', 'Não informado')}
-
-🛋️ Mobiliado:
-{sessao.get('mobiliado', 'Não informado')}
-
-🌱 Objetivo rural:
-{sessao.get('objetivo_rural', 'Não informado')}
-
-📏 Área/Hectares:
-{sessao.get('hectares', 'Não informado')}
-
-📍 Localização:
-{sessao.get('localizacao')}
-
-💰 Faixa valor:
-{sessao.get('faixa_valor')}
-
-🔁 Permuta:
-{'Sim' if sessao.get('permuta') else 'Não'}
-
-📱 WhatsApp cliente:
-{whatsapp}
-
-🔥 Score Lead:
-{score}
-"""
-
-        enviar_whatsapp(relatorio)
+        enviado = enviar_whatsapp(relatorio)
 
         del sessoes[session_id]
 
-        return {
-
-            "mensagem":
-
-                "✅ Atendimento concluído com sucesso!\n\n"
-                "Nossa equipe já recebeu suas informações.\n\n"
-                "Em breve um corretor entrará em contato 😊",
-
-            "link_whatsapp":
-
-                f"https://wa.me/{NUMERO_CORRETOR}"
-
+        resposta = {
+            "mensagem": "✅ Atendimento concluído com sucesso!\n\n"
+            "Nossa equipe já recebeu suas informações.\n\n"
+            "Em breve um corretor entrará em contato 😊",
         }
+
+        if NUMERO_CORRETOR:
+            resposta["link_whatsapp"] = f"https://wa.me/{NUMERO_CORRETOR}"
+        else:
+            # Quando o número do corretor não estiver configurado, incluímos
+            # o relatório no retorno para permitir encaminhamento manual.
+            resposta["aviso"] = (
+                "NUMERO_CORRETOR não configurado. Configure a variável de ambiente "
+                "NUMERO_CORRETOR para habilitar o link direto ao corretor."
+            )
+            resposta["relatorio"] = relatorio
+
+        return resposta
 
     # ========================================
     # FALLBACK
     # ========================================
 
-    return {
-
-        "mensagem":
-
-            "Desculpe, não consegui entender.\n\n"
-            "Tente novamente 😊"
-
-    }
+    return {"mensagem": "Desculpe, não consegui entender.\n\n" "Tente novamente 😊"}
