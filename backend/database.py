@@ -1,9 +1,6 @@
 from supabase import create_client
-
 from dotenv import load_dotenv
-
 import os
-
 
 
 # =========================================
@@ -13,35 +10,29 @@ import os
 load_dotenv()
 
 
-
 # =========================================
 # VARIÁVEIS
 # =========================================
 
-SUPABASE_URL = os.getenv(
-
-    "SUPABASE_URL"
-
-)
-
-
-
-SUPABASE_KEY = os.getenv(
-
-    "SUPABASE_KEY"
-
-)
-
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 
 
 # =========================================
-# CLIENT SUPABASE
+# CLIENT SUPABASE (lazy)
 # =========================================
 
-supabase = create_client(
+_supabase_client = None
 
-    SUPABASE_URL,
 
-    SUPABASE_KEY
+def get_supabase():
+    """Retorna uma instância do cliente Supabase. Cria sob demanda.
 
-)
+    Lança RuntimeError se credenciais não estiverem configuradas.
+    """
+    global _supabase_client
+    if _supabase_client is None:
+        if not SUPABASE_URL or not SUPABASE_KEY:
+            raise RuntimeError("Supabase URL/KEY não configurados no ambiente")
+        _supabase_client = create_client(SUPABASE_URL, SUPABASE_KEY)
+    return _supabase_client

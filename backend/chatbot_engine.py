@@ -4,10 +4,14 @@
 
 import requests
 import re
+import logging
 import os
 from dotenv import load_dotenv
 
 load_dotenv()
+
+# logger
+logger = logging.getLogger(__name__)
 
 # ============================================
 # CONFIGURAÇÕES
@@ -104,17 +108,17 @@ def enviar_whatsapp(relatorio, phone=None):
     destino = phone or NUMERO_CORRETOR
 
     if not destino:
-        print("Aviso: NUMERO_CORRETOR não configurado; envio Z-API pulado.")
+        logger.warning("NUMERO_CORRETOR não configurado; envio Z-API pulado.")
         return False
 
     try:
         url = f"https://api.z-api.io/instances/{ZAPI_INSTANCE}/token/{ZAPI_TOKEN}/send-text"
         headers = {"Client-Token": ZAPI_CLIENT_TOKEN}
         payload = {"phone": destino, "message": relatorio}
-        requests.post(url, json=payload, headers=headers)
+        requests.post(url, json=payload, headers=headers, timeout=10)
         return True
     except Exception as erro:
-        print("Erro Z-API:", erro)
+        logger.exception("Erro ao enviar mensagem via Z-API")
         return False
 
 
