@@ -2,15 +2,11 @@
 # chatbot_engine.py
 # ============================================
 
-import requests
-import re
 import logging
 import os
-from dotenv import load_dotenv
+import re
+import requests
 
-load_dotenv()
-
-# logger
 logger = logging.getLogger(__name__)
 
 # ============================================
@@ -240,495 +236,582 @@ def classificar_perfil(dados):
 
 
 async def processar_chatbot(mensagem, session_id):
-
     mensagem = mensagem.strip()
+    logger.info(
+        "Entrando em processar_chatbot() | session_id=%s | mensagem=%s",
+        session_id,
+        mensagem[:120],
+    )
+    try:
+        # ========================================
+        # NOVA SESSÃO
+        # ========================================
 
-    # ========================================
-    # NOVA SESSÃO
-    # ========================================
-
-    if session_id not in sessoes:
-
-        sessoes[session_id] = {"etapa": "objetivo"}
-
-        return {
-            "mensagem": (
-                "Olá 👋\n\n"
-                "Sou a assistente virtual imobiliária de Renan Aguiar.\n\n"
-                "Vou entender rapidamente o perfil do imóvel que você procura 😊\n\n"
-                "Qual é o seu objetivo?"
-            ),
-            "opcoes": ["Comprar imóvel", "Alugar imóvel", "Investir", "Sou corretor"],
-        }
-
-    sessao = sessoes[session_id]
-
-    etapa = sessao["etapa"]
-
-    # ========================================
-    # DETECTAR PERMUTA
-    # ========================================
-
-    if detectar_permuta(mensagem):
-
-        sessao["permuta"] = True
-
-        sessao["etapa"] = "whatsapp_permuta"
-
-        return {
-            "mensagem": "Entendi 😊\n\n"
-            "Casos de permuta exigem análise personalizada.\n\n"
-            "Informe seu WhatsApp com DDD para que um corretor especializado entre em contato.",
-            "opcoes": [],
-        }
-
-    # ========================================
-    # OBJETIVO
-    # ========================================
-
-    if etapa == "objetivo":
-
-        sessao["objetivo"] = mensagem
-
-        sessao["etapa"] = "tipo_imovel"
-
-        # ====================================
-        # ALUGUEL
-        # ====================================
-
-        if "alugar" in mensagem.lower():
-
-            return {
-                "mensagem": "Perfeito 👍\n\n" "Qual tipo de imóvel você procura?",
+        if session_id not in sessoes:
+            sessoes[session_id] = {"etapa": "objetivo"}
+            resposta = {
+                "mensagem": (
+                    "Olá 👋\n\n"
+                    "Sou a assistente virtual imobiliária de Renan Aguiar.\n\n"
+                    "Vou entender rapidamente o perfil do imóvel que você procura 😊\n\n"
+                    "Qual é o seu objetivo?"
+                ),
                 "opcoes": [
-                    "Casa",
-                    "Apartamento",
-                    "Kitnet",
-                    "Cobertura",
-                    "Terreno",
-                    "Imóvel comercial",
+                    "Comprar imóvel",
+                    "Alugar imóvel",
+                    "Investir",
+                    "Sou corretor",
                 ],
             }
-
-        # ====================================
-        # COMPRA
-        # ====================================
-
-        return {
-            "mensagem": "Perfeito 👍\n\n" "Qual tipo de imóvel você procura?",
-            "opcoes": [
-                "Casa",
-                "Apartamento",
-                "Kitnet",
-                "Cobertura",
-                "Granja",
-                "Chácara",
-                "Sítio",
-                "Fazenda",
-                "Terreno",
-                "Lançamento",
-                "Imóvel comercial",
-            ],
-        }
-
-    # # ========================================
-
-    # TIPO IMÓVEL
-
-    # ========================================
-
-    if etapa == "tipo_imovel":
-
-        sessao["tipo_imovel"] = mensagem
-
-        tipo = mensagem.lower()
-
-        # ====================================
-        # RURAL
-        # ====================================
-
-        if tipo in ["granja", "chácara", "chacara", "fazenda", "sítio", "sitio"]:
-
-            sessao["etapa"] = "objetivo_rural"
-
-            return {
-                "mensagem": "Excelente 😊\n\n" "Qual o objetivo principal do imóvel?",
-                "opcoes": ["Lazer", "Moradia", "Produção rural", "Investimento"],
-            }
-
-        # ====================================
-        # TERRENO
-        # ====================================
-
-        if tipo == "terreno":
-
-            sessao["etapa"] = "objetivo_terreno"
-
-            return {
-                "mensagem": "Perfeito 👍\n\n" "Qual a finalidade do terreno?",
-                "opcoes": [
-                    "Construir para morar",
-                    "Investimento",
-                    "Construção comercial",
-                ],
-            }
-
-        # ====================================
-        # USO DO IMÓVEL
-        # ====================================
-
-        sessao["etapa"] = "uso_imovel"
-
-        return {
-            "mensagem": "Qual será o principal uso do imóvel?",
-            "opcoes": ["Moradia", "Investimento", "Moradia e investimento"],
-        }
-
-    # ========================================
-
-    # USO IMÓVEL
-
-    # ========================================
-
-    if etapa == "uso_imovel":
-
-        sessao["uso_imovel"] = mensagem
-
-        sessao["etapa"] = "primeiro_imovel"
-
-        return {"mensagem": "Será seu primeiro imóvel?", "opcoes": ["Sim", "Não"]}
-
-    # ========================================
-
-    # PRIMEIRO IMÓVEL
-
-    # ========================================
-
-    if etapa == "primeiro_imovel":
-
-        sessao["primeiro_imovel"] = mensagem
-
-        sessao["etapa"] = "quartos"
-
-        return {
-            "mensagem": "Quantos quartos você deseja?",
-            "opcoes": ["1 quarto", "2 quartos", "3 quartos", "4 quartos ou mais"],
-        }
-
-    # ========================================
-    # OBJETIVO RURAL
-    # ========================================
-
-    if etapa == "objetivo_rural":
-
-        sessao["objetivo_rural"] = mensagem
-
-        sessao["etapa"] = "hectares"
-
-        return {
-            "mensagem": "Ótimo 👍\n\n" "Qual tamanho aproximado procura?",
-            "opcoes": [
-                "Até 1 hectare",
-                "1 a 5 hectares",
-                "5 a 20 hectares",
-                "Acima de 20 hectares",
-            ],
-        }
-
-    # ========================================
-    # HECTARES
-    # ========================================
-
-    if etapa == "hectares":
-
-        sessao["hectares"] = mensagem
-
-        sessao["etapa"] = "localizacao"
-
-        return {
-            "mensagem": "Perfeito 😊\n\n" "Qual localização deseja para o imóvel?",
-            "opcoes": [],
-        }
-
-    # ========================================
-    # OBJETIVO TERRENO
-    # ========================================
-
-    if etapa == "objetivo_terreno":
-
-        sessao["objetivo_terreno"] = mensagem
-
-        sessao["etapa"] = "localizacao"
-
-        return {
-            "mensagem": "Excelente 👍\n\n" "Qual localização deseja para o terreno?",
-            "opcoes": [],
-        }
-
-    # ========================================
-    # QUARTOS
-    # ========================================
-
-    if etapa == "quartos":
-
-        sessao["quartos"] = mensagem
-
-        sessao["etapa"] = "banheiros"
-
-        return {
-            "mensagem": "Perfeito 👍\n\n" "Quantos banheiros você deseja?",
-            "opcoes": ["1 banheiro", "2 banheiros", "3 banheiros", "4 ou mais"],
-        }
-
-    # ========================================
-
-    # BANHEIROS
-
-    # ========================================
-
-    if etapa == "banheiros":
-
-        sessao["banheiros"] = mensagem
-
-        sessao["etapa"] = "vagas"
-
-        return {
-            "mensagem": "Ótimo 😊\n\n" "Quantas vagas de garagem você precisa?",
-            "opcoes": ["Sem garagem", "1 vaga", "2 vagas", "3 ou mais"],
-        }
-
-    # ========================================
-
-    # VAGAS
-
-    # ========================================
-
-    if etapa == "vagas":
-
-        sessao["vagas"] = mensagem
-
-        if "alugar" in sessao["objetivo"].lower():
-
-            sessao["etapa"] = "mobiliado"
-
-            return {
-                "mensagem": "Perfeito 👍\n\n" "Você procura imóvel:",
-                "opcoes": ["Mobiliado", "Semimobiliado", "Não importa"],
-            }
-
-        sessao["etapa"] = "localizacao"
-
-        return {
-            "mensagem": "Perfeito 👍\n\n" "Qual localização deseja para o imóvel?",
-            "opcoes": [],
-        }
-
-    # ========================================
-
-    # MOBILIADO
-
-    # ========================================
-
-    if etapa == "mobiliado":
-
-        sessao["mobiliado"] = mensagem
-
-        sessao["etapa"] = "pet"
-
-        return {
-            "mensagem": "Você possui animais de estimação?",
-            "opcoes": ["Sim", "Não"],
-        }
-
-    # ========================================
-
-    # PET
-
-    # ========================================
-
-    if etapa == "pet":
-
-        sessao["pet"] = mensagem
-
-        sessao["etapa"] = "localizacao"
-
-        return {
-            "mensagem": "Excelente 😊\n\n" "Qual localização deseja para o imóvel?",
-            "opcoes": [],
-        }
-
-    # ========================================
-
-    # LOCALIZAÇÃO
-
-    # ========================================
-
-    if etapa == "localizacao":
-
-        if not validar_localizacao(mensagem):
-
-            return {
-                "mensagem": "Não consegui identificar a localização 😊\n\n"
-                "Pode informar a cidade, bairro, região ou referência desejada?",
+            logger.info(
+                "Saindo de processar_chatbot() | session_id=%s | etapa=%s | resposta_keys=%s",
+                session_id,
+                sessoes[session_id]["etapa"],
+                list(resposta.keys()),
+            )
+            return resposta
+
+        sessao = sessoes[session_id]
+        etapa = sessao["etapa"]
+        logger.info(
+            "processar_chatbot etapagem | session_id=%s | etapa=%s",
+            session_id,
+            etapa,
+        )
+
+        # ========================================
+        # DETECTAR PERMUTA
+        # ========================================
+
+        if detectar_permuta(mensagem):
+            sessao["permuta"] = True
+            sessao["etapa"] = "whatsapp_permuta"
+            resposta = {
+                "mensagem": "Entendi 😊\n\n"
+                "Casos de permuta exigem análise personalizada.\n\n"
+                "Informe seu WhatsApp com DDD para que um corretor especializado entre em contato.",
                 "opcoes": [],
             }
+            logger.info(
+                "Saindo de processar_chatbot() | session_id=%s | etapa=%s | resposta_keys=%s",
+                session_id,
+                sessao["etapa"],
+                list(resposta.keys()),
+            )
+            return resposta
 
-        sessao["localizacao"] = mensagem
+        # ========================================
+        # OBJETIVO
+        # ========================================
 
-        sessao["etapa"] = "faixa_valor"
+        if etapa == "objetivo":
+            sessao["objetivo"] = mensagem
+            sessao["etapa"] = "tipo_imovel"
+            if "alugar" in mensagem.lower():
+                resposta = {
+                    "mensagem": "Perfeito 👍\n\n" "Qual tipo de imóvel você procura?",
+                    "opcoes": [
+                        "Casa",
+                        "Apartamento",
+                        "Kitnet",
+                        "Cobertura",
+                        "Terreno",
+                        "Imóvel comercial",
+                    ],
+                }
+            else:
+                resposta = {
+                    "mensagem": "Perfeito 👍\n\n" "Qual tipo de imóvel você procura?",
+                    "opcoes": [
+                        "Casa",
+                        "Apartamento",
+                        "Kitnet",
+                        "Cobertura",
+                        "Granja",
+                        "Chácara",
+                        "Sítio",
+                        "Fazenda",
+                        "Terreno",
+                        "Lançamento",
+                        "Imóvel comercial",
+                    ],
+                }
+            logger.info(
+                "Saindo de processar_chatbot() | session_id=%s | etapa=%s | resposta_keys=%s",
+                session_id,
+                sessao["etapa"],
+                list(resposta.keys()),
+            )
+            return resposta
 
-        if "alugar" in sessao["objetivo"].lower():
+        # ========================================
+        # TIPO IMÓVEL
+        # ========================================
 
-            return {
-                "mensagem": "Ótimo 😊\n\n" "Qual faixa de aluguel você procura?",
+        if etapa == "tipo_imovel":
+            sessao["tipo_imovel"] = mensagem
+            tipo = mensagem.lower()
+            if tipo in ["granja", "chácara", "chacara", "fazenda", "sítio", "sitio"]:
+                sessao["etapa"] = "objetivo_rural"
+                resposta = {
+                    "mensagem": "Excelente 😊\n\n"
+                    "Qual o objetivo principal do imóvel?",
+                    "opcoes": ["Lazer", "Moradia", "Produção rural", "Investimento"],
+                }
+                logger.info(
+                    "Saindo de processar_chatbot() | session_id=%s | etapa=%s | resposta_keys=%s",
+                    session_id,
+                    sessao["etapa"],
+                    list(resposta.keys()),
+                )
+                return resposta
+            if tipo == "terreno":
+                sessao["etapa"] = "objetivo_terreno"
+                resposta = {
+                    "mensagem": "Perfeito 👍\n\n" "Qual a finalidade do terreno?",
+                    "opcoes": [
+                        "Construir para morar",
+                        "Investimento",
+                        "Construção comercial",
+                    ],
+                }
+                logger.info(
+                    "Saindo de processar_chatbot() | session_id=%s | etapa=%s | resposta_keys=%s",
+                    session_id,
+                    sessao["etapa"],
+                    list(resposta.keys()),
+                )
+                return resposta
+            sessao["etapa"] = "uso_imovel"
+            resposta = {
+                "mensagem": "Qual será o principal uso do imóvel?",
+                "opcoes": ["Moradia", "Investimento", "Moradia e investimento"],
+            }
+            logger.info(
+                "Saindo de processar_chatbot() | session_id=%s | etapa=%s | resposta_keys=%s",
+                session_id,
+                sessao["etapa"],
+                list(resposta.keys()),
+            )
+            return resposta
+
+        # ========================================
+        # USO IMÓVEL
+        # ========================================
+
+        if etapa == "uso_imovel":
+            sessao["uso_imovel"] = mensagem
+            sessao["etapa"] = "primeiro_imovel"
+            resposta = {
+                "mensagem": "Será seu primeiro imóvel?",
+                "opcoes": ["Sim", "Não"],
+            }
+            logger.info(
+                "Saindo de processar_chatbot() | session_id=%s | etapa=%s | resposta_keys=%s",
+                session_id,
+                sessao["etapa"],
+                list(resposta.keys()),
+            )
+            return resposta
+
+        # ========================================
+        # PRIMEIRO IMÓVEL
+        # ========================================
+
+        if etapa == "primeiro_imovel":
+            sessao["primeiro_imovel"] = mensagem
+            sessao["etapa"] = "quartos"
+            resposta = {
+                "mensagem": "Quantos quartos você deseja?",
+                "opcoes": ["1 quarto", "2 quartos", "3 quartos", "4 quartos ou mais"],
+            }
+            logger.info(
+                "Saindo de processar_chatbot() | session_id=%s | etapa=%s | resposta_keys=%s",
+                session_id,
+                sessao["etapa"],
+                list(resposta.keys()),
+            )
+            return resposta
+
+        # ========================================
+        # OBJETIVO RURAL
+        # ========================================
+
+        if etapa == "objetivo_rural":
+            sessao["objetivo_rural"] = mensagem
+            sessao["etapa"] = "hectares"
+            resposta = {
+                "mensagem": "Ótimo 👍\n\n" "Qual tamanho aproximado procura?",
                 "opcoes": [
-                    "Até R$ 800",
-                    "R$ 800 a R$ 1.500",
-                    "R$ 1.500 a R$ 3.000",
-                    "R$ 3.000 a R$ 5.000",
-                    "Acima de R$ 5.000",
+                    "Até 1 hectare",
+                    "1 a 5 hectares",
+                    "5 a 20 hectares",
+                    "Acima de 20 hectares",
                 ],
             }
+            logger.info(
+                "Saindo de processar_chatbot() | session_id=%s | etapa=%s | resposta_keys=%s",
+                session_id,
+                sessao["etapa"],
+                list(resposta.keys()),
+            )
+            return resposta
 
-        return {
-            "mensagem": "Excelente 😊\n\n" "Qual faixa de valor você procura?",
-            "opcoes": [
-                "Até R$ 150 mil",
-                "R$ 150 mil a R$ 300 mil",
-                "R$ 300 mil a R$ 500 mil",
-                "R$ 500 mil a R$ 1 milhão",
-                "Acima de R$ 1 milhão",
-            ],
-        }
+        # ========================================
+        # HECTARES
+        # ========================================
 
-    # ========================================
+        if etapa == "hectares":
+            sessao["hectares"] = mensagem
+            sessao["etapa"] = "localizacao"
+            resposta = {
+                "mensagem": "Perfeito 😊\n\n" "Qual localização deseja para o imóvel?",
+                "opcoes": [],
+            }
+            logger.info(
+                "Saindo de processar_chatbot() | session_id=%s | etapa=%s | resposta_keys=%s",
+                session_id,
+                sessao["etapa"],
+                list(resposta.keys()),
+            )
+            return resposta
 
-    # FAIXA VALOR
+        # ========================================
+        # OBJETIVO TERRENO
+        # ========================================
 
-    # ========================================
+        if etapa == "objetivo_terreno":
+            sessao["objetivo_terreno"] = mensagem
+            sessao["etapa"] = "localizacao"
+            resposta = {
+                "mensagem": "Excelente 👍\n\n"
+                "Qual localização deseja para o terreno?",
+                "opcoes": [],
+            }
+            logger.info(
+                "Saindo de processar_chatbot() | session_id=%s | etapa=%s | resposta_keys=%s",
+                session_id,
+                sessao["etapa"],
+                list(resposta.keys()),
+            )
+            return resposta
 
-    if etapa == "faixa_valor":
-        sessao["faixa_valor"] = mensagem
+        # ========================================
+        # QUARTOS
+        # ========================================
 
-        sessao["etapa"] = "financiamento"
+        if etapa == "quartos":
+            sessao["quartos"] = mensagem
+            sessao["etapa"] = "banheiros"
+            resposta = {
+                "mensagem": "Perfeito 👍\n\n" "Quantos banheiros você deseja?",
+                "opcoes": ["1 banheiro", "2 banheiros", "3 banheiros", "4 ou mais"],
+            }
+            logger.info(
+                "Saindo de processar_chatbot() | session_id=%s | etapa=%s | resposta_keys=%s",
+                session_id,
+                sessao["etapa"],
+                list(resposta.keys()),
+            )
+            return resposta
 
-        return {
-            "mensagem": "Você pretende utilizar financiamento?",
-            "opcoes": ["Sim", "Não", "Ainda vou verificar"],
-        }
+        # ========================================
+        # BANHEIROS
+        # ========================================
 
-    # ========================================
+        if etapa == "banheiros":
+            sessao["banheiros"] = mensagem
+            sessao["etapa"] = "vagas"
+            resposta = {
+                "mensagem": "Ótimo 😊\n\n" "Quantas vagas de garagem você precisa?",
+                "opcoes": ["Sem garagem", "1 vaga", "2 vagas", "3 ou mais"],
+            }
+            logger.info(
+                "Saindo de processar_chatbot() | session_id=%s | etapa=%s | resposta_keys=%s",
+                session_id,
+                sessao["etapa"],
+                list(resposta.keys()),
+            )
+            return resposta
 
-    # FINANCIAMENTO
+        # ========================================
+        # VAGAS
+        # ========================================
 
-    # ========================================
+        if etapa == "vagas":
+            sessao["vagas"] = mensagem
+            if "alugar" in sessao["objetivo"].lower():
+                sessao["etapa"] = "mobiliado"
+                resposta = {
+                    "mensagem": "Perfeito 👍\n\n" "Você procura imóvel:",
+                    "opcoes": ["Mobiliado", "Semimobiliado", "Não importa"],
+                }
+            else:
+                sessao["etapa"] = "localizacao"
+                resposta = {
+                    "mensagem": "Perfeito 👍\n\n"
+                    "Qual localização deseja para o imóvel?",
+                    "opcoes": [],
+                }
+            logger.info(
+                "Saindo de processar_chatbot() | session_id=%s | etapa=%s | resposta_keys=%s",
+                session_id,
+                sessao["etapa"],
+                list(resposta.keys()),
+            )
+            return resposta
 
-    if etapa == "financiamento":
-        sessao["financiamento"] = mensagem
+        # ========================================
+        # MOBILIADO
+        # ========================================
 
-        sessao["etapa"] = "fgts"
+        if etapa == "mobiliado":
+            sessao["mobiliado"] = mensagem
+            sessao["etapa"] = "pet"
+            resposta = {
+                "mensagem": "Você possui animais de estimação?",
+                "opcoes": ["Sim", "Não"],
+            }
+            logger.info(
+                "Saindo de processar_chatbot() | session_id=%s | etapa=%s | resposta_keys=%s",
+                session_id,
+                sessao["etapa"],
+                list(resposta.keys()),
+            )
+            return resposta
 
-        return {
-            "mensagem": "Pretende utilizar FGTS?",
-            "opcoes": ["Sim", "Não", "Não sei"],
-        }
+        # ========================================
+        # PET
+        # ========================================
 
-    # ========================================
+        if etapa == "pet":
+            sessao["pet"] = mensagem
+            sessao["etapa"] = "localizacao"
+            resposta = {
+                "mensagem": "Excelente 😊\n\n" "Qual localização deseja para o imóvel?",
+                "opcoes": [],
+            }
+            logger.info(
+                "Saindo de processar_chatbot() | session_id=%s | etapa=%s | resposta_keys=%s",
+                session_id,
+                sessao["etapa"],
+                list(resposta.keys()),
+            )
+            return resposta
 
-    # FGTS
+        # ========================================
+        # LOCALIZAÇÃO
+        # ========================================
 
-    # ========================================
+        if etapa == "localizacao":
+            if not validar_localizacao(mensagem):
+                resposta = {
+                    "mensagem": "Não consegui identificar a localização 😊\n\n"
+                    "Pode informar a cidade, bairro, região ou referência desejada?",
+                    "opcoes": [],
+                }
+                logger.info(
+                    "Saindo de processar_chatbot() | session_id=%s | etapa=%s | resposta_keys=%s",
+                    session_id,
+                    sessao["etapa"],
+                    list(resposta.keys()),
+                )
+                return resposta
+            sessao["localizacao"] = mensagem
+            sessao["etapa"] = "faixa_valor"
+            if "alugar" in sessao["objetivo"].lower():
+                resposta = {
+                    "mensagem": "Ótimo 😊\n\n" "Qual faixa de aluguel você procura?",
+                    "opcoes": [
+                        "Até R$ 800",
+                        "R$ 800 a R$ 1.500",
+                        "R$ 1.500 a R$ 3.000",
+                        "R$ 3.000 a R$ 5.000",
+                        "Acima de R$ 5.000",
+                    ],
+                }
+            else:
+                resposta = {
+                    "mensagem": "Excelente 😊\n\n" "Qual faixa de valor você procura?",
+                    "opcoes": [
+                        "Até R$ 150 mil",
+                        "R$ 150 mil a R$ 300 mil",
+                        "R$ 300 mil a R$ 500 mil",
+                        "R$ 500 mil a R$ 1 milhão",
+                        "Acima de R$ 1 milhão",
+                    ],
+                }
+            logger.info(
+                "Saindo de processar_chatbot() | session_id=%s | etapa=%s | resposta_keys=%s",
+                session_id,
+                sessao["etapa"],
+                list(resposta.keys()),
+            )
+            return resposta
 
-    if etapa == "fgts":
+        # ========================================
+        # FAIXA VALOR
+        # ========================================
 
-        sessao["fgts"] = mensagem
+        if etapa == "faixa_valor":
+            sessao["faixa_valor"] = mensagem
+            sessao["etapa"] = "financiamento"
+            resposta = {
+                "mensagem": "Você pretende utilizar financiamento?",
+                "opcoes": ["Sim", "Não", "Ainda vou verificar"],
+            }
+            logger.info(
+                "Saindo de processar_chatbot() | session_id=%s | etapa=%s | resposta_keys=%s",
+                session_id,
+                sessao["etapa"],
+                list(resposta.keys()),
+            )
+            return resposta
 
-        sessao["etapa"] = "renda_familiar"
+        # ========================================
+        # FINANCIAMENTO
+        # ========================================
 
-        return {
-            "mensagem": "Qual sua renda familiar aproximada?",
-            "opcoes": [
-                "Até R$ 3.000",
-                "R$ 3.000 a R$ 5.000",
-                "R$ 5.000 a R$ 8.000",
-                "Acima de R$ 8.000",
-            ],
-        }
+        if etapa == "financiamento":
+            sessao["financiamento"] = mensagem
+            sessao["etapa"] = "fgts"
+            resposta = {
+                "mensagem": "Pretende utilizar FGTS?",
+                "opcoes": ["Sim", "Não", "Não sei"],
+            }
+            logger.info(
+                "Saindo de processar_chatbot() | session_id=%s | etapa=%s | resposta_keys=%s",
+                session_id,
+                sessao["etapa"],
+                list(resposta.keys()),
+            )
+            return resposta
 
-    # ========================================
+        # ========================================
+        # FGTS
+        # ========================================
 
-    # RENDA FAMILIAR
+        if etapa == "fgts":
+            sessao["fgts"] = mensagem
+            sessao["etapa"] = "renda_familiar"
+            resposta = {
+                "mensagem": "Qual sua renda familiar aproximada?",
+                "opcoes": [
+                    "Até R$ 3.000",
+                    "R$ 3.000 a R$ 5.000",
+                    "R$ 5.000 a R$ 8.000",
+                    "Acima de R$ 8.000",
+                ],
+            }
+            logger.info(
+                "Saindo de processar_chatbot() | session_id=%s | etapa=%s | resposta_keys=%s",
+                session_id,
+                sessao["etapa"],
+                list(resposta.keys()),
+            )
+            return resposta
 
-    # ========================================
+        # ========================================
+        # RENDA FAMILIAR
+        # ========================================
 
-    if etapa == "renda_familiar":
-        sessao["renda_familiar"] = mensagem
-        sessao["etapa"] = "prazo_compra"
-        return {
-            "mensagem": "Quando pretende comprar o imóvel?",
-            "opcoes": [
-                "Imediatamente",
-                "Até 3 meses",
-                "Até 6 meses",
-                "Mais de 6 meses",
-            ],
-        }
+        if etapa == "renda_familiar":
+            sessao["renda_familiar"] = mensagem
+            sessao["etapa"] = "prazo_compra"
+            resposta = {
+                "mensagem": "Quando pretende comprar o imóvel?",
+                "opcoes": [
+                    "Imediatamente",
+                    "Até 3 meses",
+                    "Até 6 meses",
+                    "Mais de 6 meses",
+                ],
+            }
+            logger.info(
+                "Saindo de processar_chatbot() | session_id=%s | etapa=%s | resposta_keys=%s",
+                session_id,
+                sessao["etapa"],
+                list(resposta.keys()),
+            )
+            return resposta
 
-    # ========================================
+        # ========================================
+        # PRAZO COMPRA
+        # ========================================
 
-    # PRAZO COMPRA
+        if etapa == "prazo_compra":
+            sessao["prazo_compra"] = mensagem
+            sessao["etapa"] = "whatsapp"
+            resposta = {
+                "mensagem": "Perfeito 😊\n\n"
+                "Informe seu WhatsApp com DDD para continuar.",
+                "opcoes": [],
+            }
+            logger.info(
+                "Saindo de processar_chatbot() | session_id=%s | etapa=%s | resposta_keys=%s",
+                session_id,
+                sessao["etapa"],
+                list(resposta.keys()),
+            )
+            return resposta
 
-    # ========================================
+        # ========================================
+        # WHATSAPP
+        # ========================================
 
-    if etapa == "prazo_compra":
-        sessao["prazo_compra"] = mensagem
-        sessao["etapa"] = "whatsapp"
-        return {
-            "mensagem": "Perfeito 😊\n\n"
-            "Informe seu WhatsApp com DDD para continuar.",
-            "opcoes": [],
-        }
+        if etapa in ["whatsapp", "whatsapp_permuta"]:
+            whatsapp = re.sub(r"\D", "", mensagem)
+            logger.info(
+                "processar_chatbot etapa whatsapp | session_id=%s | whatsapp=%s",
+                session_id,
+                whatsapp,
+            )
+            sessao["whatsapp"] = whatsapp
+            perfil = classificar_perfil(sessao)
+            score = calcular_score(sessao)
+            relatorio = criar_relatorio(perfil, sessao, whatsapp, score)
+            enviado = enviar_whatsapp(relatorio)
+            logger.info(
+                "enviar_whatsapp retornou %s | session_id=%s", enviado, session_id
+            )
+            del sessoes[session_id]
+            resposta = {
+                "mensagem": "✅ Atendimento concluído com sucesso!\n\n"
+                "Nossa equipe já recebeu suas informações.\n\n"
+                "Em breve um corretor entrará em contato 😊",
+            }
+            if NUMERO_CORRETOR:
+                resposta["link_whatsapp"] = f"https://wa.me/{NUMERO_CORRETOR}"
+            else:
+                resposta["aviso"] = (
+                    "NUMERO_CORRETOR não configurado. Configure a variável de ambiente "
+                    "NUMERO_CORRETOR para habilitar o link direto ao corretor."
+                )
+                resposta["relatorio"] = relatorio
+            logger.info(
+                "Saindo de processar_chatbot() | session_id=%s | etapa=%s | resposta_keys=%s",
+                session_id,
+                etapa,
+                list(resposta.keys()),
+            )
+            return resposta
 
-    # ========================================
-    # WHATSAPP
-    # ========================================
-
-    if etapa in ["whatsapp", "whatsapp_permuta"]:
-        whatsapp = re.sub(r"\D", "", mensagem)
-
-        sessao["whatsapp"] = whatsapp
-
-        perfil = classificar_perfil(sessao)
-
-        score = calcular_score(sessao)
-
-        relatorio = criar_relatorio(perfil, sessao, whatsapp, score)
-
-        enviado = enviar_whatsapp(relatorio)
-
-        del sessoes[session_id]
+        # ========================================
+        # FALLBACK
+        # ========================================
 
         resposta = {
-            "mensagem": "✅ Atendimento concluído com sucesso!\n\n"
-            "Nossa equipe já recebeu suas informações.\n\n"
-            "Em breve um corretor entrará em contato 😊",
+            "mensagem": "Desculpe, não consegui entender.\n\n" "Tente novamente 😊"
         }
-
-        if NUMERO_CORRETOR:
-            resposta["link_whatsapp"] = f"https://wa.me/{NUMERO_CORRETOR}"
-        else:
-            # Quando o número do corretor não estiver configurado, incluímos
-            # o relatório no retorno para permitir encaminhamento manual.
-            resposta["aviso"] = (
-                "NUMERO_CORRETOR não configurado. Configure a variável de ambiente "
-                "NUMERO_CORRETOR para habilitar o link direto ao corretor."
-            )
-            resposta["relatorio"] = relatorio
-
+        logger.info(
+            "Saindo de processar_chatbot() | session_id=%s | etapa=%s | fallback | resposta_keys=%s",
+            session_id,
+            etapa,
+            list(resposta.keys()),
+        )
         return resposta
-
-    # ========================================
-    # FALLBACK
-    # ========================================
-
-    return {"mensagem": "Desculpe, não consegui entender.\n\n" "Tente novamente 😊"}
+    except Exception:
+        logger.exception(
+            "Erro encontrado em processar_chatbot() | session_id=%s", session_id
+        )
+        raise
