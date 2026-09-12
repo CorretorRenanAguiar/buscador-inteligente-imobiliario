@@ -1,609 +1,626 @@
-import logging
-import re
-from typing import Any, Dict, List, Optional
+﻿# ============================================
+# chatbot_engine.py
+# ============================================
 
+import os
+import re
+import requests
+from supabase import create_client
 from dotenv import load_dotenv
 
-from backend.database_supabase import salvar_lead_supabase
-from backend.enhanced_filters_kmeans import qualificar_sessao_chatbot
-from backend.evolution_api import enviar_mensagem_whatsapp
+# ============================================
+# CARREGAR VARI├üVEIS .ENV
+# ============================================
 
 load_dotenv()
 
-logger = logging.getLogger(__name__)
+# ============================================
+# VARI├üVEIS DE AMBIENTE
+# ============================================
+
+ZAPI_INSTANCE = os.getenv("ZAPI_INSTANCE")
+ZAPI_TOKEN = os.getenv("ZAPI_TOKEN")
+NUMERO_CORRETOR = os.getenv("NUMERO_CORRETOR")
+# ============================================
+# SUPABASE
+# ============================================
+
+supabase = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_KEY"))
+# ============================================
+# SESS├òES
+# ============================================
+
+sessoes = {}
+
+# ============================================
+# PALAVRAS RELACIONADAS A PERMUTA
+# ============================================
 
 PALAVRAS_PERMUTA = [
     "permuta",
     "troca",
-    "permutar",
     "aceita carro",
-    "aceita veículo",
+    "aceita ve├¡culo",
     "aceita veiculo",
-    "aceita imóvel",
+    "aceita im├│vel",
     "aceita imovel",
     "aceita terreno",
+    "aceita lote",
+    "aceita casa",
+    "aceita apartamento",
     "aceitar carro",
-    "aceitar veículo",
+    "aceitar ve├¡culo",
     "aceitar veiculo",
-    "aceitar imóvel",
+    "aceitar im├│vel",
     "aceitar imovel",
-    "aceitar terreno",
 ]
 
+# ============================================
+# LOCALIZA├ç├òES INV├üLIDAS
+# ============================================
+
 LOCALIZACOES_INVALIDAS = [
-    "aqui",
-    "lá",
-    "la",
-    "ali",
-    "acolá",
-    "acola",
     "aaa",
     "bbb",
     "ccc",
     "abc",
-    "teste",
     "123",
-    "piru",
+    "teste",
     "asdf",
     "qwerty",
-    "esse",
     "isso",
+    "esse",
+    "xxx",
+    "nada",
 ]
 
-sessoes: Dict[str, Dict[str, Any]] = {}
+# ============================================
+# VALIDAR LOCALIZA├ç├âO
+# ============================================
 
 
-def _normalizar_texto(valor: Any) -> str:
-    if valor is None:
-        return ""
-    return str(valor).strip().lower()
+def validar_localizacao(texto):
 
+    texto = texto.strip().lower()
 
-def _valor_representativo_renda(valor: Any) -> float:
-    if valor is None:
-        return 0.0
+    if len(texto) < 3:
 
-    texto = str(valor).strip().lower()
-
-    if not texto or "prefiro não informar" in texto or "prefiro nao informar" in texto:
-        return 0.0
-
-    numeros = re.findall(r"\d+(?:[.,]\d+)?", texto)
-    valores: List[float] = []
-
-    for numero in numeros:
-        try:
-            if "." in numero and "," in numero:
-                numero = numero.replace(".", "").replace(",", ".")
-            elif "," in numero:
-                numero = numero.replace(",", ".")
-            elif "." in numero:
-                partes = numero.split(".")
-                if len(partes[-1]) == 3:
-                    numero = numero.replace(".", "")
-            valores.append(float(numero))
-        except ValueError:
-            continue
-
-    if not valores:
-        return 0.0
-
-    tem_milhao = (
-        "milhão" in texto
-        or "milhao" in texto
-        or "milhões" in texto
-        or "milhoes" in texto
-    )
-    tem_mil = "mil" in texto
-
-    multiplicador = 1.0
-    if tem_milhao and all(v < 1000 for v in valores):
-        multiplicador = 1_000_000.0
-    elif tem_mil and all(v < 1000 for v in valores):
-        multiplicador = 1_000.0
-
-    valores = [v * multiplicador for v in valores]
-
-    if len(valores) == 1:
-        return valores[0]
-
-    return sum(valores[:2]) / 2.0
-
-
-def _calcular_renda_total_composicao(participantes: List[Dict[str, Any]]) -> float:
-    total = 0.0
-    for participante in participantes:
-        renda = participante.get("renda_declarada") or participante.get("renda")
-        valor = participante.get("renda_estimada")
-        if valor is None:
-            valor = _valor_representativo_renda(renda)
-        if valor > 0:
-            total += valor
-    return total
-
-
-def _formatar_renda(valor: float) -> Optional[str]:
-    if valor is None or valor <= 0:
-        return None
-    return f"R$ {valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-
-
-def detectar_permuta(texto: str) -> bool:
-    texto_normalizado = texto.lower()
-    for palavra in PALAVRAS_PERMUTA:
-        if palavra in texto_normalizado:
-            return True
-    return False
-
-
-def validar_localizacao(texto: str) -> bool:
-    texto_normalizado = texto.strip().lower()
-    if len(texto_normalizado) < 3:
         return False
-    if texto_normalizado in LOCALIZACOES_INVALIDAS:
+
+    if texto in LOCALIZACOES_INVALIDAS:
+
         return False
+
     return True
 
 
-def _resposta_sim(mensagem: str) -> bool:
-    texto = mensagem.strip().lower()
-    return texto in ["sim", "s", "sim.", "sim!", "quero", "pretendo"]
+# ============================================
+# DETECTAR PERMUTA
+# ============================================
 
 
-def _resposta_nao(mensagem: str) -> bool:
-    texto = mensagem.strip().lower()
-    return texto in ["não", "nao", "n", "não.", "nao.", "não!", "nao!"]
+def detectar_permuta(texto):
+
+    texto = texto.lower()
+
+    for palavra in PALAVRAS_PERMUTA:
+
+        if palavra in texto:
+
+            return True
+
+    return False
 
 
-def _extrair_quantidade(mensagem: str) -> Optional[int]:
-    encontrado = re.search(r"\d+", mensagem)
-    if encontrado:
-        try:
-            quantidade = int(encontrado.group())
-            if quantidade > 0:
-                return quantidade
-        except ValueError:
-            pass
-
-    texto = mensagem.strip().lower()
-    if "mais de 4" in texto:
-        return 5
-    if "duas" in texto:
-        return 2
-    if "três" in texto or "tres" in texto:
-        return 3
-    if "quatro" in texto:
-        return 4
-    return None
+# ============================================
+# CALCULAR SCORE
+# ============================================
 
 
-def criar_relatorio(
-    sessao: Dict[str, Any],
-    whatsapp: str,
-    qualificacao: Dict[str, Any],
-) -> str:
-    score = qualificacao.get("score", 0)
-    cluster = qualificacao.get("cluster")
-    perfil_cluster = qualificacao.get("perfil_cluster", "Modelo ainda não treinado")
-    intencao = qualificacao.get("intencao_compra", "NÃO CLASSIFICADA")
-    maturidade = qualificacao.get("maturidade", "NÃO CLASSIFICADA")
-    prioridade = qualificacao.get("prioridade", "NÃO CLASSIFICADA")
-    recomendacao = qualificacao.get(
-        "recomendacao", "Realizar atendimento personalizado."
-    )
-    justificativas = qualificacao.get("justificativas", [])
-    observacoes = qualificacao.get("observacoes_filtro", [])
+def calcular_score(dados):
 
-    cluster_texto = (
-        str(cluster)
-        if cluster is not None
-        else "Ainda não disponível — modelo K-Means aguardando treinamento"
-    )
+    score = 0
 
-    justificativas_texto = (
-        "\n".join(f"- {item}" for item in justificativas)
-        if justificativas
-        else "- Nenhuma justificativa adicional registrada."
-    )
+    objetivo = dados.get("objetivo", "").lower()
+    faixa = dados.get("faixa_valor", "").lower()
+    tipo = dados.get("tipo_imovel", "").lower()
+    whatsapp = dados.get("whatsapp", "")
 
-    observacoes_texto = (
-        "\n".join(f"- {item}" for item in observacoes)
-        if observacoes
-        else "- Nenhuma observação adicional."
-    )
+    # INVESTIMENTO
 
-    participantes = sessao.get("participantes_renda", [])
-    if participantes:
-        participantes_texto = "\n".join(
-            f"- Participante {p.get('numero', idx)}: {p.get('renda_declarada', p.get('renda', 'Não informado'))}"
-            for idx, p in enumerate(participantes, start=1)
-        )
-    else:
-        participantes_texto = "- Nenhum participante adicional informado."
+    if "invest" in objetivo:
 
-    composicao = sessao.get("composicao_renda", "Não informada")
-    renda_total = sessao.get(
-        "renda_total_declarada",
-        sessao.get("renda_familiar", "Não informado"),
-    )
+        score += 5
 
-    if isinstance(renda_total, (int, float)) and renda_total > 0:
-        renda_total_formatada = _formatar_renda(renda_total)
-    else:
-        renda_total_formatada = str(renda_total)
+    # VALORES ALTOS
 
-    return f"""NOVO LEAD IMOBILIÁRIO
+    if "1 milh├úo" in faixa:
 
-QUALIFICAÇÃO DO LEAD
+        score += 5
 
-Prioridade: {prioridade}
+    elif "500 mil" in faixa:
 
-Score: {score}/100
+        score += 3
 
-Cluster K-Means:
-{cluster_texto}
+    # LOCA├ç├âO
 
-Perfil do cluster:
-{perfil_cluster}
+    if "alugar" in objetivo:
 
-Intenção de compra:
-{intencao}
+        score += 2
 
-Maturidade da decisão:
-{maturidade}
+    # MOBILIADO
 
-PERFIL IMOBILIÁRIO
+    if dados.get("mobiliado") == "Mobiliado":
 
-Objetivo:
-{sessao.get('objetivo', 'Não informado')}
+        score += 2
 
-Tipo de imóvel:
-{sessao.get('tipo_imovel', 'Não informado')}
+    # WHATSAPP V├üLIDO
 
-Uso do imóvel:
-{sessao.get('uso_imovel', 'Não informado')}
+    if len(whatsapp) >= 11:
 
-Primeiro imóvel:
-{sessao.get('primeiro_imovel', 'Não informado')}
+        score += 2
 
-Quartos:
-{sessao.get('quartos', 'Não informado')}
+    # IM├ôVEL COMERCIAL
 
-Banheiros:
-{sessao.get('banheiros', 'Não informado')}
+    if tipo == "im├│vel comercial":
 
-Vagas:
-{sessao.get('vagas', 'Não informado')}
+        score += 3
 
-Possui pet:
-{sessao.get('pet', 'Não informado')}
+    # RURAL
 
-Mobiliado:
-{sessao.get('mobiliado', 'Não informado')}
+    if tipo in ["fazenda", "granja", "s├¡tio", "sitio", "ch├ícara", "chacara"]:
 
-Objetivo rural:
-{sessao.get('objetivo_rural', 'Não informado')}
+        score += 3
 
-Área/Hectares:
-{sessao.get('hectares', 'Não informado')}
+    # PERMUTA
 
-Localização:
-{sessao.get('localizacao', 'Não informado')}
+    if dados.get("permuta"):
 
-PERFIL FINANCEIRO DECLARADO
+        score += 5
 
-Faixa de valor:
-{sessao.get('faixa_valor', 'Não informado')}
-
-Financiamento:
-{sessao.get('financiamento', 'Não informado')}
-
-Composição de renda:
-{composicao}
-
-Quantidade de participantes:
-{sessao.get('quantidade_participantes', 'Não informado')}
-
-Participantes e rendas:
-{participantes_texto}
-
-Renda total declarada/estimada:
-{renda_total_formatada}
-
-FGTS:
-{sessao.get('fgts', 'Não informado')}
-
-Valor aproximado de entrada:
-{sessao.get('valor_entrada', 'Não informado')}
-
-Prazo de compra:
-{sessao.get('prazo_compra', 'Não informado')}
-
-Permuta:
-{'Sim' if sessao.get('permuta') else 'Não'}
-
-CONTATO
-
-WhatsApp:
-{whatsapp}
-
-JUSTIFICATIVAS DA CLASSIFICAÇÃO
-
-{justificativas_texto}
-
-RECOMENDAÇÃO DE ABORDAGEM
-
-{recomendacao}
-
-OBSERVAÇÕES DOS FILTROS
-
-{observacoes_texto}
-
-ATENÇÃO
-
-Os dados financeiros foram declarados pelo próprio lead.
-
-Quando houver faixas de renda, a renda total estimada utiliza um valor representativo da faixa informada exclusivamente para fins de análise e segmentação.
-
-A renda declarada não representa aprovação de financiamento, capacidade de crédito comprovada ou análise bancária.
-
-Quando houver composição de renda, o sistema identifica apenas uma possibilidade declarada de composição e recomenda análise ou simulação posterior pelo corretor e pela instituição financeira.
-
-A classificação do sistema representa apoio à decisão comercial, não aprovação de crédito.
-
-O sistema não realiza consulta de CPF, SPC, Serasa ou qualquer verificação externa de crédito.""".strip()
+    return score
 
 
-async def processar_chatbot(
-    mensagem: str,
-    session_id: str,
-    tenant_id: str = "desenvolvimento",
-) -> Dict[str, Any]:
+# ============================================
+# CLASSIFICAR PERFIL
+# ============================================
+
+
+def classificar_perfil(dados):
+
+    tipo = dados.get("tipo_imovel", "").lower()
+    objetivo = dados.get("objetivo", "").lower()
+
+    if "alugar" in objetivo:
+
+        return "Loca├º├úo"
+
+    if "invest" in objetivo:
+
+        return "Investidor"
+
+    if tipo in ["fazenda", "granja", "s├¡tio", "sitio", "ch├ícara", "chacara"]:
+
+        return "Rural"
+
+    if tipo == "lan├ºamento":
+
+        return "Lan├ºamento"
+
+    return "Residencial"
+
+
+# ============================================
+# SALVAR LEAD SUPABASE
+# ============================================
+
+
+def salvar_lead_supabase(dados):
+
+    try:
+
+        score = calcular_score(dados)
+
+        classificacao = "frio"
+
+        if score >= 8:
+
+            classificacao = "quente"
+
+        elif score >= 4:
+
+            classificacao = "morno"
+
+        payload = {
+            "telefone": dados.get("whatsapp"),
+            "bairro": dados.get("localizacao"),
+            "bairro_interesse": dados.get("localizacao"),
+            "faixa_preco_interesse": dados.get("faixa_valor"),
+            "tipo_interesse": dados.get("objetivo"),
+            "tipo_imovel": dados.get("tipo_imovel"),
+            "objetivo": dados.get("objetivo"),
+            "quartos": dados.get("quartos"),
+            "banheiros": dados.get("banheiros"),
+            "vagas_garagem": dados.get("vagas_garagem"),
+            "aceita_pet": dados.get("aceita_pet"),
+            "momento_compra": dados.get("momento_compra"),
+            "financiamento": dados.get("financiamento"),
+            "fgts": dados.get("fgts"),
+            "renda_familiar": dados.get("renda_familiar"),
+            "origem_lead": "chatbot",
+            "score_lead": score,
+            "classificacao_lead": classificacao,
+            "observacoes": str(
+                {
+                    "perfil": classificar_perfil(dados),
+                    "objetivo_rural": dados.get("objetivo_rural"),
+                    "hectares": dados.get("hectares"),
+                    "mobiliado": dados.get("mobiliado"),
+                    "permuta": dados.get("permuta"),
+                }
+            ),
+        }
+
+        resposta = supabase.table("leads").insert(payload).execute()
+
+        print("====================================")
+        print("LEAD SALVO SUPABASE")
+        print(resposta)
+        print("====================================")
+
+        return True
+
+    except Exception as erro:
+
+        print("====================================")
+        print("ERRO SUPABASE")
+        print(str(erro))
+        print("====================================")
+
+        return False
+
+
+# ============================================
+# ENVIAR WHATSAPP
+# ============================================
+
+
+def enviar_whatsapp(relatorio):
+
+    try:
+
+        print("====================================")
+        print("FUN├ç├âO ENVIAR WHATSAPP EXECUTADA")
+        print("====================================")
+
+        url = f"https://api.z-api.io/instances/{ZAPI_INSTANCE}/token/{ZAPI_TOKEN}/send-text"
+
+        payload = {"phone": str(NUMERO_CORRETOR), "message": str(relatorio)}
+
+        headers = {"Content-Type": "application/json"}
+
+        print("URL:", url)
+        print("PAYLOAD:", payload)
+
+        response = requests.post(url, json=payload, headers=headers, timeout=30)
+
+        print("====================================")
+        print("ENVIO WHATSAPP")
+        print("STATUS:", response.status_code)
+        print("RESPOSTA:", response.text)
+        print("====================================")
+
+        return response.status_code == 200
+
+    except Exception as erro:
+
+        print("====================================")
+        print("ERRO AO ENVIAR WHATSAPP")
+        print(str(erro))
+        print("====================================")
+
+        return False
+
+
+# ============================================
+# PROCESSAMENTO CHATBOT
+# ============================================
+
+
+async def processar_chatbot(mensagem, session_id):
+
     mensagem = mensagem.strip()
 
-    if not mensagem:
-        return {"mensagem": "Por favor, envie uma mensagem para continuarmos."}
+    # NOVA SESS├âO
 
     if session_id not in sessoes:
-        sessoes[session_id] = {
-            "etapa": "objetivo",
-            "tenant_id": tenant_id,
-        }
+
+        sessoes[session_id] = {"etapa": "objetivo"}
+
         return {
-            "mensagem": (
-                "Olá!\n\n"
-                "Sou a assistente virtual imobiliária de Renan Aguiar.\n\n"
-                "Vou entender rapidamente o perfil do imóvel que você procura.\n\n"
-                "Qual é o seu objetivo?"
-            ),
-            "opcoes": [
-                "Comprar imóvel",
-                "Alugar imóvel",
-                "Investir",
-                "Sou corretor",
-            ],
+            "mensagem": "Ol├í ­ƒæï\n\n"
+            "Sou a assistente virtual imobili├íria de Renan Aguiar.\n\n"
+            "Vou entender rapidamente o perfil do im├│vel que voc├¬ procura ­ƒÿè\n\n"
+            "Qual ├® o seu objetivo?",
+            "opcoes": ["Comprar im├│vel", "Alugar im├│vel", "Investir", "Sou corretor"],
         }
 
     sessao = sessoes[session_id]
 
-    if "tenant_id" not in sessao and tenant_id:
-        sessao["tenant_id"] = tenant_id
+    etapa = sessao["etapa"]
 
-    etapa = sessao.get("etapa", "objetivo")
+    # DETECTAR PERMUTA
 
     if detectar_permuta(mensagem):
+
         sessao["permuta"] = True
-        sessao["etapa"] = "whatsapp_permuta"
+
+        sessao["etapa"] = "whatsapp"
+
         return {
-            "mensagem": (
-                "Entendi.\n\n"
-                "Casos de permuta exigem análise personalizada.\n\n"
-                "Informe seu WhatsApp com DDD para que um corretor especializado entre em contato."
-            ),
+            "mensagem": "Entendi ­ƒÿè\n\n"
+            "Casos de permuta exigem an├ílise personalizada.\n\n"
+            "Informe seu WhatsApp com DDD para que um corretor especializado entre em contato.",
             "opcoes": [],
         }
 
+    # OBJETIVO
+
     if etapa == "objetivo":
+
         sessao["objetivo"] = mensagem
+
         sessao["etapa"] = "tipo_imovel"
 
-        if "alugar" in _normalizar_texto(mensagem):
+        if "alugar" in mensagem.lower():
+
             return {
-                "mensagem": "Perfeito.\n\nQual tipo de imóvel você procura?",
+                "mensagem": "Perfeito ­ƒæì\n\n" "Qual tipo de im├│vel voc├¬ procura?",
                 "opcoes": [
                     "Casa",
                     "Apartamento",
                     "Kitnet",
                     "Cobertura",
                     "Terreno",
-                    "Imóvel comercial",
+                    "Im├│vel comercial",
                 ],
             }
 
         return {
-            "mensagem": "Perfeito.\n\nQual tipo de imóvel você procura?",
+            "mensagem": "Perfeito ­ƒæì\n\n" "Qual tipo de im├│vel voc├¬ procura?",
             "opcoes": [
                 "Casa",
                 "Apartamento",
                 "Kitnet",
                 "Cobertura",
                 "Granja",
-                "Chácara",
-                "Sítio",
+                "Ch├ícara",
+                "S├¡tio",
                 "Fazenda",
                 "Terreno",
-                "Lançamento",
-                "Imóvel comercial",
+                "Lan├ºamento",
+                "Im├│vel comercial",
             ],
         }
 
-    if etapa == "tipo_imovel":
-        sessao["tipo_imovel"] = mensagem
-        tipo = _normalizar_texto(mensagem)
+    # TIPO IM├ôVEL
 
-        if tipo in ["granja", "chácara", "chacara", "fazenda", "sítio", "sitio"]:
+    if etapa == "tipo_imovel":
+
+        sessao["tipo_imovel"] = mensagem
+
+        tipo = mensagem.lower()
+
+        # RURAL
+ 
+        if tipo in ["granja", "fazenda", "s├¡tio", "sitio", "ch├ícara", "chacara"]:
+
             sessao["etapa"] = "objetivo_rural"
+
             return {
-                "mensagem": "Excelente.\n\nQual o objetivo principal do imóvel?",
-                "opcoes": [
-                    "Lazer",
-                    "Moradia",
-                    "Produção rural",
-                    "Investimento",
-                ],
+                "mensagem": "Excelente ­ƒÿè\n\n"
+                "Qual o principal objetivo do imovel rural?",
+                "opcoes": ["Lazer", "Moradia", "Producao rural", "Investimento"],
             }
 
+        # TERRENO
+
         if tipo == "terreno":
+
             sessao["etapa"] = "objetivo_terreno"
+
             return {
-                "mensagem": "Perfeito.\n\nQual a finalidade do terreno?",
+                "mensagem": "Perfeito.\n\n" "Qual a finalidade do terreno?",
                 "opcoes": [
                     "Construir para morar",
                     "Investimento",
-                    "Construção comercial",
+                    "Construcao comercial",
                 ],
             }
 
+        # IM├ôVEIS URBANOS
+     
+
         sessao["etapa"] = "uso_imovel"
+
         return {
-            "mensagem": "Qual será o principal uso do imóvel?",
-            "opcoes": [
-                "Moradia",
-                "Investimento",
-                "Moradia e investimento",
-            ],
+            "mensagem": "Qual sera o principal uso do imovel?",
+            "opcoes": ["Moradia", "Comercial", "Investimento"],
         }
+
+    # USO IMOVEL
 
     if etapa == "uso_imovel":
+
         sessao["uso_imovel"] = mensagem
+
         sessao["etapa"] = "primeiro_imovel"
+
         return {
-            "mensagem": "Será seu primeiro imóvel?",
-            "opcoes": ["Sim", "Não"],
+            "mensagem": "Sera seu primeiro imovel?",
+            "opcoes": ["Sim", "N├úo"],
         }
+
+    # PRIMEIRO IMOVEL
 
     if etapa == "primeiro_imovel":
+
         sessao["primeiro_imovel"] = mensagem
+
         sessao["etapa"] = "quartos"
+
         return {
-            "mensagem": "Quantos quartos você deseja?",
-            "opcoes": [
-                "1 quarto",
-                "2 quartos",
-                "3 quartos",
-                "4 quartos ou mais",
-            ],
+            "mensagem": "Perfeito.\n\n" "Quantos quartos voce deseja?",
+            "opcoes": ["1 quarto", "2 quartos", "3 quartos", "4 quartos ou mais"],
         }
 
+    # OBJETIVO RURAL
+
     if etapa == "objetivo_rural":
+
         sessao["objetivo_rural"] = mensagem
+
         sessao["etapa"] = "hectares"
+
         return {
-            "mensagem": "Ótimo.\n\nQual tamanho aproximado procura?",
+            "mensagem": "Otimo.\n\n" "Qual tamanho aproximado procura?",
             "opcoes": [
-                "Até 1 hectare",
+                "At├® 1 hectare",
                 "1 a 5 hectares",
                 "5 a 20 hectares",
                 "Acima de 20 hectares",
             ],
         }
 
+    # HECTARES
+
     if etapa == "hectares":
+
         sessao["hectares"] = mensagem
+
         sessao["etapa"] = "localizacao"
+
         return {
-            "mensagem": "Perfeito.\n\nQual localização deseja para o imóvel?",
+            "mensagem": "Perfeito.\n\n" "Qual localizacao deseja para o imovel?",
             "opcoes": [],
         }
+
+    # OBJETIVO TERRENO
 
     if etapa == "objetivo_terreno":
+
         sessao["objetivo_terreno"] = mensagem
+
         sessao["etapa"] = "localizacao"
+
         return {
-            "mensagem": "Excelente.\n\nQual localização deseja para o terreno?",
+            "mensagem": "Excelente.\n\n" "Qual localizacao deseja para o terreno?",
             "opcoes": [],
         }
 
+    # QUARTOS
+
     if etapa == "quartos":
+
         sessao["quartos"] = mensagem
+
+        if "alugar" in sessao["objetivo"].lower():
+
+            sessao["etapa"] = "mobiliado"
+
+            return {
+                "mensagem": "Perfeito.\n\n" "Voce procura imovel:",
+                "opcoes": ["Mobiliado", "Semimobiliado", "N├úo importa"],
+            }
+
         sessao["etapa"] = "banheiros"
+
         return {
-            "mensagem": "Perfeito.\n\nQuantos banheiros você deseja?",
-            "opcoes": [
-                "1 banheiro",
-                "2 banheiros",
-                "3 banheiros",
-                "4 ou mais",
-            ],
+            "mensagem": "Perfeito.\n\n" "Quantos banheiros voce precisa?",
+            "opcoes": ["1 banheiro", "2 banheiros", "3 banheiros", "4 ou mais"],
         }
+    # BANHEIROS
 
     if etapa == "banheiros":
+
         sessao["banheiros"] = mensagem
-        sessao["etapa"] = "vagas"
+
+        sessao["etapa"] = "vagas_garagem"
+
         return {
-            "mensagem": "Ótimo.\n\nQuantas vagas de garagem você precisa?",
-            "opcoes": [
-                "Sem garagem",
-                "1 vaga",
-                "2 vagas",
-                "3 ou mais",
-            ],
+            "mensagem": "Otimo.\n\n" "Quantas vagas de garagem voce precisa?",
+            "opcoes": ["Sem garagem", "1 vaga", "2 vagas", "3 ou mais"],
         }
 
-    if etapa == "vagas":
-        sessao["vagas"] = mensagem
+    # VAGAS GARAGEM
 
-        if "alugar" in _normalizar_texto(sessao.get("objetivo")):
+    if etapa == "vagas_garagem":
+
+        sessao["vagas_garagem"] = mensagem
+
+        sessao["etapa"] = "aceita_pet"
+
+        return {
+            "mensagem": "Voce possui animais de estimacao?",
+            "opcoes": ["Sim", "N├úo"],
+        }
+
+    # ACEITA PET
+
+    if etapa == "aceita_pet":
+
+        sessao["aceita_pet"] = mensagem
+
+        if "alugar" in sessao["objetivo"].lower():
+
             sessao["etapa"] = "mobiliado"
+
             return {
-                "mensagem": "Perfeito.\n\nVocê procura imóvel:",
-                "opcoes": [
-                    "Mobiliado",
-                    "Semimobiliado",
-                    "Não importa",
-                ],
+                "mensagem": "Perfeito.\n\n" "Voce procura imovel:",
+                "opcoes": ["Mobiliado", "Semimobiliado", "N├úo importa"],
             }
 
         sessao["etapa"] = "localizacao"
+
         return {
-            "mensagem": "Perfeito.\n\nQual localização deseja para o imóvel?",
+            "mensagem": "Excelente.\n\n" "Qual localizacao deseja para o imovel?",
             "opcoes": [],
         }
+    # MOBILIADO
 
     if etapa == "mobiliado":
-        sessao["mobiliado"] = mensagem
-        sessao["etapa"] = "pet"
-        return {
-            "mensagem": "Você possui animais de estimação?",
-            "opcoes": ["Sim", "Não"],
-        }
 
-    if etapa == "pet":
-        sessao["pet"] = mensagem
+        sessao["mobiliado"] = mensagem
+
         sessao["etapa"] = "localizacao"
+
         return {
-            "mensagem": "Excelente.\n\nQual localização deseja para o imóvel?",
+            "mensagem": "Excelente.\n\n" "Qual localizacao deseja para o imovel?",
             "opcoes": [],
         }
 
+    # LOCALIZA├ç├âO
+
     if etapa == "localizacao":
+
         if not validar_localizacao(mensagem):
+
             return {
-                "mensagem": (
-                    "Não consegui identificar a localização.\n\n"
-                    "Pode informar a cidade, bairro, região ou referência desejada?"
-                ),
+                "mensagem": "Nao consegui identificar a localizacao.\n\n"
+                "Pode informar cidade, bairro, regiao ou referencia desejada?",
                 "opcoes": [],
             }
 
         sessao["localizacao"] = mensagem
+
         sessao["etapa"] = "faixa_valor"
 
-        if "alugar" in _normalizar_texto(sessao.get("objetivo")):
+        if "alugar" in sessao["objetivo"].lower():
+
             return {
-                "mensagem": "Ótimo.\n\nQual faixa de aluguel você procura?",
+                "mensagem": "Otimo.\n\n" "Qual faixa de aluguel voce procura?",
                 "opcoes": [
-                    "Até R$ 800",
+                    "At├® R$ 800",
                     "R$ 800 a R$ 1.500",
                     "R$ 1.500 a R$ 3.000",
                     "R$ 3.000 a R$ 5.000",
@@ -612,377 +629,168 @@ async def processar_chatbot(
             }
 
         return {
-            "mensagem": "Excelente.\n\nQual faixa de valor você procura?",
+            "mensagem": "Excelente.\n\n" "Qual faixa de valor voce procura?",
             "opcoes": [
-                "Até R$ 150 mil",
+                "At├® R$ 150 mil",
                 "R$ 150 mil a R$ 300 mil",
                 "R$ 300 mil a R$ 500 mil",
-                "R$ 500 mil a R$ 1 milhão",
-                "Acima de R$ 1 milhão",
+                "R$ 500 mil a R$ 1 milhao",
+                "Acima de R$ 1 milh├úo",
             ],
         }
+
+    # FAIXA VALOR
 
     if etapa == "faixa_valor":
+
         sessao["faixa_valor"] = mensagem
 
-        if "alugar" in _normalizar_texto(sessao.get("objetivo")):
-            sessao["etapa"] = "whatsapp"
-            return {
-                "mensagem": "Perfeito.\n\nInforme seu WhatsApp com DDD para continuar.",
-                "opcoes": [],
-            }
-
-        sessao["etapa"] = "financiamento"
-        return {
-            "mensagem": "Você pretende utilizar financiamento bancário para essa compra?",
-            "opcoes": [
-                "Sim",
-                "Não",
-                "Ainda vou verificar",
-            ],
-        }
-
-    if etapa == "financiamento":
-        sessao["financiamento"] = mensagem
-
-        if _resposta_sim(mensagem):
-            sessao["etapa"] = "composicao_renda"
-            return {
-                "mensagem": (
-                    "Para essa compra, você pretende utilizar somente a sua renda "
-                    "ou poderá contar com a renda de outras pessoas?"
-                ),
-                "opcoes": [
-                    "Somente minha renda",
-                    "Poderei contar com a renda de outras pessoas",
-                    "Ainda não sei",
-                ],
-            }
-
-        sessao["composicao_renda"] = "Não"
-        sessao["quantidade_participantes"] = 1
-        sessao["etapa"] = "renda_propria"
-        return {
-            "mensagem": "Qual é a sua renda mensal aproximada?",
-            "opcoes": [
-                "Até R$ 3.000",
-                "R$ 3.000 a R$ 5.000",
-                "R$ 5.000 a R$ 8.000",
-                "Acima de R$ 8.000",
-                "Prefiro não informar",
-            ],
-        }
-
-    if etapa == "composicao_renda":
-        texto = _normalizar_texto(mensagem)
-
-        if "poderei" in texto or "outras" in texto or _resposta_sim(mensagem):
-            sessao["composicao_renda"] = "Sim"
-            sessao["etapa"] = "quantidade_participantes"
-            return {
-                "mensagem": "Entendi.\n\nQuantas pessoas poderão participar da composição de renda?",
-                "opcoes": [
-                    "2 pessoas",
-                    "3 pessoas",
-                    "4 pessoas",
-                    "Mais de 4 pessoas",
-                ],
-            }
-
-        if "ainda" in texto:
-            sessao["composicao_renda"] = "Ainda não sei"
-            sessao["quantidade_participantes"] = 1
-            sessao["etapa"] = "renda_propria"
-            return {
-                "mensagem": "Sem problema.\n\nPara uma primeira qualificação, qual é a sua renda mensal aproximada?",
-                "opcoes": [
-                    "Até R$ 3.000",
-                    "R$ 3.000 a R$ 5.000",
-                    "R$ 5.000 a R$ 8.000",
-                    "Acima de R$ 8.000",
-                    "Prefiro não informar",
-                ],
-            }
-
-        sessao["composicao_renda"] = "Não"
-        sessao["quantidade_participantes"] = 1
-        sessao["etapa"] = "renda_propria"
-        return {
-            "mensagem": "Qual é a sua renda mensal aproximada?",
-            "opcoes": [
-                "Até R$ 3.000",
-                "R$ 3.000 a R$ 5.000",
-                "R$ 5.000 a R$ 8.000",
-                "Acima de R$ 8.000",
-                "Prefiro não informar",
-            ],
-        }
-
-    if etapa == "quantidade_participantes":
-        quantidade = _extrair_quantidade(mensagem)
-
-        if quantidade is None:
-            return {
-                "mensagem": "Pode informar apenas a quantidade de pessoas que poderão participar da composição de renda?",
-                "opcoes": [
-                    "2 pessoas",
-                    "3 pessoas",
-                    "4 pessoas",
-                    "Mais de 4 pessoas",
-                ],
-            }
-
-        if quantidade < 2:
-            return {
-                "mensagem": "Como estamos falando de composição de renda, informe pelo menos 2 participantes.",
-                "opcoes": [
-                    "2 pessoas",
-                    "3 pessoas",
-                    "4 pessoas",
-                    "Mais de 4 pessoas",
-                ],
-            }
-
-        if quantidade > 10:
-            return {
-                "mensagem": "Para essa primeira qualificação, informe uma quantidade de até 10 participantes.",
-                "opcoes": [
-                    "2 pessoas",
-                    "3 pessoas",
-                    "4 pessoas",
-                    "Mais de 4 pessoas",
-                ],
-            }
-
-        sessao["quantidade_participantes"] = quantidade
-        sessao["participantes_renda"] = []
-        sessao["participante_atual"] = 1
-        sessao["etapa"] = "renda_participante"
+        sessao["etapa"] = "momento_compra"
 
         return {
-            "mensagem": f"Qual é a renda mensal aproximada da pessoa 1 de {quantidade}?",
-            "opcoes": [
-                "Até R$ 2.000",
-                "R$ 2.000 a R$ 4.000",
-                "R$ 4.000 a R$ 6.000",
-                "R$ 6.000 a R$ 10.000",
-                "Acima de R$ 10.000",
-                "Prefiro não informar",
-            ],
-        }
-
-    if etapa == "renda_participante":
-        participante_atual = int(sessao.get("participante_atual", 1))
-        quantidade_participantes = int(sessao.get("quantidade_participantes", 1))
-        renda_informada = mensagem.strip()
-        valor_renda = _valor_representativo_renda(renda_informada)
-
-        participantes_renda = sessao.get("participantes_renda", [])
-        participantes_renda.append(
-            {
-                "numero": participante_atual,
-                "renda": renda_informada,
-                "renda_declarada": renda_informada,
-                "renda_estimada": valor_renda,
-            }
-        )
-        sessao["participantes_renda"] = participantes_renda
-
-        renda_total = sum(p.get("renda_estimada") or 0.0 for p in participantes_renda)
-        sessao["renda_total_declarada"] = renda_total
-        sessao["renda_familiar"] = renda_informada
-
-        if participante_atual < quantidade_participantes:
-            proximo_participante = participante_atual + 1
-            sessao["participante_atual"] = proximo_participante
-
-            return {
-                "mensagem": f"Qual é a renda mensal aproximada da pessoa {proximo_participante} de {quantidade_participantes}?",
-                "opcoes": [
-                    "Até R$ 2.000",
-                    "R$ 2.000 a R$ 4.000",
-                    "R$ 4.000 a R$ 6.000",
-                    "R$ 6.000 a R$ 10.000",
-                    "Acima de R$ 10.000",
-                    "Prefiro não informar",
-                ],
-            }
-
-        sessao["etapa"] = "fgts"
-        return {
-            "mensagem": "Obrigado. A composição de renda foi registrada.\n\nAgora, pretende utilizar FGTS?",
-            "opcoes": [
-                "Sim",
-                "Não",
-                "Não sei",
-            ],
-        }
-
-    if etapa == "renda_propria":
-        renda_informada = mensagem.strip()
-        valor_renda = _valor_representativo_renda(renda_informada)
-
-        sessao["renda_familiar"] = renda_informada
-        sessao["renda_total_declarada"] = valor_renda
-        sessao["quantidade_participantes"] = 1
-        sessao["participantes_renda"] = [
-            {
-                "numero": 1,
-                "renda": renda_informada,
-                "renda_declarada": renda_informada,
-                "renda_estimada": valor_renda,
-            }
-        ]
-        sessao["etapa"] = "fgts"
-
-        return {
-            "mensagem": "Pretende utilizar FGTS?",
-            "opcoes": [
-                "Sim",
-                "Não",
-                "Não sei",
-            ],
-        }
-
-    if etapa == "fgts":
-        sessao["fgts"] = mensagem
-        sessao["etapa"] = "valor_entrada"
-        return {
-            "mensagem": "Qual é o valor aproximado que você pretende utilizar como entrada?",
-            "opcoes": [
-                "Ainda não sei",
-                "Até R$ 30 mil",
-                "R$ 30 mil a R$ 60 mil",
-                "R$ 60 mil a R$ 100 mil",
-                "Acima de R$ 100 mil",
-            ],
-        }
-
-    if etapa == "valor_entrada":
-        sessao["valor_entrada"] = mensagem
-        sessao["etapa"] = "prazo_compra"
-        return {
-            "mensagem": "Quando pretende comprar o imóvel?",
+            "mensagem": "Em quanto tempo pretende comprar o imovel?",
             "opcoes": [
                 "Imediatamente",
-                "Até 3 meses",
-                "Até 6 meses",
-                "Mais de 6 meses",
+                "At├® 3 meses",
+                "At├® 6 meses",
+                "Acima de 6 meses",
+            ],
+        }
+    # MOMENTO COMPRA
+
+    if etapa == "momento_compra":
+
+        sessao["momento_compra"] = mensagem
+
+        sessao["etapa"] = "financiamento"
+
+        return {
+            "mensagem": "Pretende utilizar financiamento imobiliario?",
+            "opcoes": ["Sim", "N├úo"],
+        }
+
+    # FINANCIAMENTO
+
+    if etapa == "financiamento":
+
+        sessao["financiamento"] = mensagem
+
+        sessao["etapa"] = "fgts"
+
+        return {
+            "mensagem": "Possui saldo de FGTS disponivel?",
+            "opcoes": ["Sim", "N├úo"],
+        }
+
+    # FGTS
+
+    if etapa == "fgts":
+
+        sessao["fgts"] = mensagem
+
+        sessao["etapa"] = "renda_familiar"
+
+        return {
+            "mensagem": "Qual sua renda familiar aproximada?",
+            "opcoes": [
+                "Ate R$ 2 mil",
+                "R$ 2 mil a R$ 4 mil",
+                "R$ 4 mil a R$ 8 mil",
+                "Acima de R$ 8 mil",
             ],
         }
 
-    if etapa == "prazo_compra":
-        sessao["prazo_compra"] = mensagem
+    # RENDA FAMILIAR
+
+    if etapa == "renda_familiar":
+
+        sessao["renda_familiar"] = mensagem
+
         sessao["etapa"] = "whatsapp"
+
         return {
-            "mensagem": "Perfeito.\n\nInforme seu WhatsApp com DDD para continuar.",
+            "mensagem": "Perfeito.\n\n"
+            "Informe seu WhatsApp com DDD para continuar.",
             "opcoes": [],
         }
+    # WHATSAPP
 
-    if etapa in ["whatsapp", "whatsapp_permuta"]:
+    if etapa == "whatsapp":
+
+        print("ENTROU ETAPA WHATSAPP")
+
         whatsapp = re.sub(r"\D", "", mensagem)
-
-        if len(whatsapp) < 10:
-            return {
-                "mensagem": "Não consegui identificar um número de WhatsApp válido.\n\nInforme o número com DDD.",
-                "opcoes": [],
-            }
 
         sessao["whatsapp"] = whatsapp
 
-        try:
-            qualificacao = qualificar_sessao_chatbot(sessao)
-        except Exception as erro:
-            logger.exception("Erro na qualificação do lead. session_id=%s", session_id)
-            del sessoes[session_id]
-            return {
-                "mensagem": "Não foi possível concluir a qualificação neste momento.",
-                "erro": str(erro),
-            }
+        perfil = classificar_perfil(sessao)
 
-        persistencia = salvar_lead_supabase(
-            sessao=sessao,
-            qualificacao=qualificacao,
-            session_id=session_id,
-        )
+        score = calcular_score(sessao)
 
-        if not persistencia.get("sucesso"):
-            logger.error(
-                "Falha ao salvar lead no Supabase. session_id=%s erro=%s",
-                session_id,
-                persistencia.get("erro"),
-            )
-            del sessoes[session_id]
-            return {
-                "mensagem": "Não foi possível concluir o registro do seu atendimento neste momento.\n\nPor favor, tente novamente.",
-                "qualificacao": {
-                    "score": qualificacao.get("score"),
-                    "cluster": qualificacao.get("cluster"),
-                    "intencao_compra": qualificacao.get("intencao_compra"),
-                    "maturidade": qualificacao.get("maturidade"),
-                    "prioridade": qualificacao.get("prioridade"),
-                    "perfil_cluster": qualificacao.get("perfil_cluster"),
-                    "justificativas": qualificacao.get("justificativas", []),
-                },
-            }
+        relatorio = f"""
 
-        relatorio = criar_relatorio(
-            sessao=sessao,
-            whatsapp=whatsapp,
-            qualificacao=qualificacao,
-        )
+NOVO LEAD IMOBILIARIO
 
-        resultado_whatsapp = enviar_mensagem_whatsapp(
-            mensagem=relatorio,
-            tenant_id=sessao.get("tenant_id", "desenvolvimento"),
-        )
+Perfil:
+{perfil}
 
-        if resultado_whatsapp.get("sucesso") is True:
-            logger.info(
-                "Relatório do lead enviado ao WhatsApp. session_id=%s tenant_id=%s",
-                session_id,
-                sessao.get("tenant_id", "desenvolvimento"),
-            )
-            mensagem_final = (
-                "Atendimento concluído com sucesso!\n\n"
-                "Suas informações foram qualificadas e encaminhadas à nossa equipe.\n\n"
-                "Em breve um corretor entrará em contato."
-            )
-        else:
-            logger.error(
-                "Falha no envio do relatório ao WhatsApp. session_id=%s erro=%s",
-                session_id,
-                resultado_whatsapp.get("erro"),
-            )
-            mensagem_final = (
-                "Atendimento concluído com sucesso!\n\n"
-                "Suas informações foram registradas em nossa base de atendimento.\n\n"
-                "Nossa equipe realizará o acompanhamento."
-            )
+Objetivo:
+{sessao.get("objetivo")}
 
-        resposta = {
-            "mensagem": mensagem_final,
-            "qualificacao": {
-                "score": qualificacao.get("score"),
-                "cluster": qualificacao.get("cluster"),
-                "intencao_compra": qualificacao.get("intencao_compra"),
-                "maturidade": qualificacao.get("maturidade"),
-                "prioridade": qualificacao.get("prioridade"),
-                "perfil_cluster": qualificacao.get("perfil_cluster"),
-                "justificativas": qualificacao.get("justificativas", []),
-            },
-            "persistencia": {
-                "sucesso": persistencia.get("sucesso"),
-            },
-            "whatsapp_corretor": {
-                "sucesso": resultado_whatsapp.get("sucesso"),
-            },
-        }
+Tipo imovel:
+{sessao.get("tipo_imovel")}
+
+Quartos:
+{sessao.get("quartos", "Nao informado")}
+
+Mobiliado:
+{sessao.get("mobiliado", "Nao informado")}
+
+Objetivo rural:
+{sessao.get("objetivo_rural", "Nao informado")}
+
+Area/Hectares:
+{sessao.get("hectares", "Nao informado")}
+
+Localizacao:
+{sessao.get("localizacao")}
+
+Faixa valor:
+{sessao.get("faixa_valor")}
+
+Permuta:
+{"Sim" if sessao.get("permuta") else "Nao"}
+
+WhatsApp cliente:
+{whatsapp}
+
+Score Lead:
+{score}
+"""
+
+        print("RELATORIO GERADO")
+        salvar_lead_supabase(sessao)
+        enviado = enviar_whatsapp(relatorio)
+
+        print("RESULTADO ENVIO:", enviado)
 
         del sessoes[session_id]
-        return resposta
 
-    return {
-        "mensagem": "Desculpe, não consegui entender.\n\nTente novamente.",
-        "opcoes": [],
-    }
+        if enviado:
+
+            return {
+                "mensagem": "Atendimento concluido com sucesso!\n\n"
+                "Nossa equipe ja recebeu suas informacoes.\n\n"
+                "Em breve um corretor entrara em contato.",
+                "link_whatsapp": f"https://wa.me/{NUMERO_CORRETOR}",
+            }
+
+        return {
+            "mensagem": "O atendimento foi concluido, porem ocorreu uma falha no envio automatico.\n\n"
+            "Por favor, clique no botao abaixo para falar diretamente com o corretor.",
+            "link_whatsapp": f"https://wa.me/{NUMERO_CORRETOR}",
+        }
+
+    # FALLBACK
+
+    return {"mensagem": "Desculpe, nao consegui entender.\n\n" "Tente novamente."}
