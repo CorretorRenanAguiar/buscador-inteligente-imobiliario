@@ -1,630 +1,741 @@
-"""
-Motor híbrido de qualificação de leads imobiliários.
-
-Pipeline:
-1. Normalização dos dados coletados pelo chatbot;
-2. Filtros determinísticos de regras de negócio;
-3. Score heurístico;
-4. Engenharia de atributos;
-5. Segmentação por K-Means;
-6. Interpretação operacional do cluster;
-7. Prioridade e recomendação de abordagem.
-
-Observação metodológica:
-- Dados financeiros são tratados como DECLARADOS pelo lead.
-- Não há consulta de CPF, Serasa, Receita Federal ou qualquer fonte externa.
-- O K-Means somente produz um cluster quando existe um modelo treinado.
-- Na fase de coleta, o sistema pode operar com filtros + score enquanto a base
-  de treinamento é formada.
-"""
-
-from __future__ import annotations
-
+import logging
+import os
 import re
-import unicodedata
-from pathlib import Path
-from typing import Any, Dict, Iterable, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
+import pandas as pd
 from joblib import dump, load
 from sklearn.cluster import KMeans
 from sklearn.preprocessing import StandardScaler
 
-BASE_DIR = Path(__file__).resolve().parent
-MODEL_PATH = BASE_DIR / "kmeans_model.joblib"
-SCALER_PATH = BASE_DIR / "scaler.joblib"
+logger = logging.getLogger(__name__)
 
-DEFAULT_K = 3
+MODEL_PATH = os.getenv(
+    "KMEANS_MODEL_PATH",
+    "backend/models/kmeans_model.joblib",
+)
+
+SCALER_PATH = os.getenv(
+    "KMEANS_SCALER_PATH",
+    "backend/models/kmeans_scaler.joblib",
+)
+
+DEFAULT_N_CLUSTERS = int(os.getenv("KMEANS_N_CLUSTERS", "4"))
+MIN_TRAINING_SAMPLES = int(os.getenv("KMEANS_MIN_TRAINING_SAMPLES", "10"))
+
+FEATURE_NAMES = [
+    "tipo_imovel",
+    "operacao",
+    "renda_relativa",
+    "percentual_entrada",
+    "urgencia",
+    "composicao_renda",
+    "permuta",
+    "fgts",
+]
+
+_kmeans_model: Optional[KMeans] = None
+_kmeans_scaler: Optional[StandardScaler] = None
 
 
-def _normalizar_texto(valor: Any) -> str:
+def _texto(valor: Any) -> str:
     if valor is None:
         return ""
+    return str(valor).strip()
+
+
+def _extrair_valor_numerico(valor: Any) -> float:
+    if valor is None:
+        return 0.0
 
     texto = str(valor).strip().lower()
-    texto = unicodedata.normalize("NFKD", texto)
-    texto = "".join(c for c in texto if not unicodedata.combining(c))
-    return texto
-
-
-def _numero_da_faixa(texto: Any) -> float:
-    """
-    Converte faixas textuais do chatbot em um valor representativo.
-
-    O valor é uma REPRESENTAÇÃO da faixa declarada, não uma informação
-    financeira verificada.
-    """
-    texto = _normalizar_texto(texto)
 
     if not texto:
         return 0.0
 
-    numeros = [
-        float(n.replace(".", "").replace(",", "."))
-        for n in re.findall(r"\d+(?:[.,]\d+)?", texto)
-    ]
+    if "prefiro não informar" in texto or "prefiro nao informar" in texto:
+        return 0.0
+
+    numeros = re.findall(
+        r"\d+(?:[.,]\d+)?",
+        texto,
+    )
 
     if not numeros:
         return 0.0
 
-    # O chatbot usa "mil" e "milhao".
-    if "milhao" in texto or "milhoes" in texto:
-        numeros = [n * 1_000_000 for n in numeros]
-    elif "mil" in texto:
-        numeros = [n * 1_000 for n in numeros]
+    valores = []
 
-    if len(numeros) == 1:
-        return numeros[0]
+    for numero in numeros:
+        try:
+            if "." in numero and "," in numero:
+                numero = numero.replace(".", "").replace(",", ".")
+            elif "," in numero:
+                numero = numero.replace(",", ".")
+            elif "." in numero:
+                partes = numero.split(".")
+                if len(partes[-1]) == 3:
+                    numero = numero.replace(".", "")
 
-    return sum(numeros[:2]) / 2.0
+            valores.append(float(numero))
 
+        except ValueError:
+            continue
 
-def _renda_declarada(texto: Any) -> float:
-    return _numero_da_faixa(texto)
+    if not valores:
+        return 0.0
 
+    texto_milhao = any(
+        termo in texto
+        for termo in [
+            "milhão",
+            "milhao",
+            "milhões",
+            "milhoes",
+        ]
+    )
 
-def _valor_interesse(texto: Any) -> float:
-    return _numero_da_faixa(texto)
+    texto_mil = "mil" in texto
 
+    if texto_milhao:
+        valores = [valor * 1_000_000 if valor < 1000 else valor for valor in valores]
+    elif texto_mil:
+        valores = [valor * 1_000 if valor < 1000 else valor for valor in valores]
 
-def _sim(valor: Any) -> bool:
-    texto = _normalizar_texto(valor)
-    return texto in {"sim", "s", "yes", "true", "1"}
+    if len(valores) == 1:
+        return valores[0]
 
-
-def _nao(valor: Any) -> bool:
-    texto = _normalizar_texto(valor)
-    return texto in {"nao", "n", "no", "false", "0"}
-
-
-def _tipo_imovel(tipo: Any) -> str:
-    texto = _normalizar_texto(tipo)
-
-    rurais = {
-        "granja",
-        "chacara",
-        "sitio",
-        "fazenda",
-    }
-
-    if texto in rurais:
-        return "rural"
-
-    if texto == "terreno":
-        return "terreno"
-
-    return "urbano"
+    return sum(valores[:2]) / 2.0
 
 
-def _operacao(objetivo: Any) -> str:
-    texto = _normalizar_texto(objetivo)
+def encode_tipo_imovel(tipo: Any) -> int:
+    texto = _texto(tipo).lower()
 
-    if "alugar" in texto or "locacao" in texto:
-        return "locacao"
+    if any(
+        termo in texto
+        for termo in [
+            "fazenda",
+            "granja",
+            "chácara",
+            "chacara",
+            "sítio",
+            "sitio",
+            "rural",
+        ]
+    ):
+        return 1
 
-    return "venda"
+    if "terreno" in texto or "lote" in texto:
+        return 2
+
+    if "comercial" in texto:
+        return 3
+
+    if "apartamento" in texto or "kitnet" in texto or "cobertura" in texto:
+        return 4
+
+    if "casa" in texto:
+        return 5
+
+    return 0
 
 
-def _prazo_score(texto: Any) -> float:
-    texto = _normalizar_texto(texto)
+def encode_operacao(objetivo: Any) -> int:
+    texto = _texto(objetivo).lower()
 
-    if "imediatamente" in texto:
+    if "alugar" in texto or "locação" in texto or "locacao" in texto:
+        return 1
+
+    if "invest" in texto:
+        return 2
+
+    return 0
+
+
+def _obter_faixa_valor(lead_dict: Dict[str, Any]) -> float:
+    valor = lead_dict.get("faixa_preco_interesse") or lead_dict.get("faixa_valor")
+    return _extrair_valor_numerico(valor)
+
+
+def _obter_renda_total(lead_dict: Dict[str, Any]) -> float:
+    renda_total = _extrair_valor_numerico(lead_dict.get("renda_total_declarada"))
+
+    if renda_total > 0:
+        return renda_total
+
+    return _extrair_valor_numerico(lead_dict.get("renda_familiar"))
+
+
+def _obter_valor_entrada(lead_dict: Dict[str, Any]) -> float:
+    valor = lead_dict.get("valor_entrada") or lead_dict.get("entrada")
+    return _extrair_valor_numerico(valor)
+
+
+def _obter_prazo(lead_dict: Dict[str, Any]) -> str:
+    return _texto(
+        lead_dict.get("prazo_compra") or lead_dict.get("momento_compra")
+    ).lower()
+
+
+def _obter_composicao(lead_dict: Dict[str, Any]) -> float:
+    composicao = _texto(lead_dict.get("composicao_renda")).lower()
+
+    if composicao in {
+        "sim",
+        "s",
+        "poderei",
+        "vou compor",
+        "pretendo compor",
+    }:
         return 1.0
 
-    if "3 meses" in texto:
-        return 0.85
+    participantes = lead_dict.get("participantes_renda")
 
-    if "6 meses" in texto:
-        return 0.65
+    if isinstance(participantes, list) and len(participantes) > 1:
+        return 1.0
 
-    if "mais de 6" in texto:
-        return 0.35
+    quantidade = lead_dict.get("quantidade_participantes")
 
-    return 0.50
+    try:
+        if int(quantidade or 0) > 1:
+            return 1.0
+    except (TypeError, ValueError):
+        pass
 
-
-def _tipo_score(tipo: Any) -> float:
-    texto = _normalizar_texto(tipo)
-
-    if texto in {"apartamento", "casa", "kitnet", "cobertura", "lancamento"}:
-        return 0.70
-
-    if texto == "terreno":
-        return 0.55
-
-    if texto in {"granja", "chacara", "sitio", "fazenda"}:
-        return 0.60
-
-    if texto == "imovel comercial":
-        return 0.65
-
-    return 0.50
+    return 0.0
 
 
-def preparar_lead_do_chatbot(sessao: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Converte o dicionário produzido pelo chatbot para o formato utilizado
-    pelo motor de qualificação.
+def _obter_urgencia(lead_dict: Dict[str, Any]) -> float:
+    prazo = _obter_prazo(lead_dict)
 
-    Nenhum poder de compra é inferido como "comprovado".
-    """
+    if not prazo:
+        return 0.0
 
-    tipo = _tipo_imovel(sessao.get("tipo_imovel"))
-    operacao = _operacao(sessao.get("objetivo"))
+    if any(
+        termo in prazo
+        for termo in [
+            "imediata",
+            "imediato",
+            "imediatamente",
+            "agora",
+        ]
+    ):
+        return 3.0
 
-    renda = _renda_declarada(sessao.get("renda_familiar"))
-    valor_interesse = _valor_interesse(sessao.get("faixa_valor"))
+    if "30 dias" in prazo or "1 mês" in prazo or "1 mes" in prazo:
+        return 3.0
 
-    financiamento = _normalizar_texto(sessao.get("financiamento"))
-    fgts = _normalizar_texto(sessao.get("fgts"))
+    if "3 meses" in prazo:
+        return 2.0
 
-    primeiro_imovel = _sim(sessao.get("primeiro_imovel"))
-    permuta = bool(sessao.get("permuta", False))
+    if "6 meses" in prazo:
+        return 1.5
 
-    prazo_score = _prazo_score(sessao.get("prazo_compra"))
-    tipo_score = _tipo_score(sessao.get("tipo_imovel"))
+    if "12 meses" in prazo or "1 ano" in prazo:
+        return 1.0
 
-    # O chatbot atual não coleta entrada real nem parcela real.
-    # Portanto, não inventamos esses valores.
-    entrada_informada = False
-    entrada_percentual = 0.0
-
-    lead = {
-        "tipo_imovel": tipo,
-        "tipo_imovel_original": sessao.get("tipo_imovel"),
-        "operacao": operacao,
-        "objetivo": sessao.get("objetivo"),
-        "uso_imovel": sessao.get("uso_imovel"),
-        "primeiro_imovel": primeiro_imovel,
-        "localizacao": sessao.get("localizacao"),
-        "faixa_valor": sessao.get("faixa_valor"),
-        "valor_interesse_estimado": valor_interesse,
-        "renda_familiar": sessao.get("renda_familiar"),
-        "renda_mensal_declarada": renda,
-        "financiamento": financiamento,
-        "fgts": fgts,
-        "prazo_compra": sessao.get("prazo_compra"),
-        "prazo_score": prazo_score,
-        "permuta": permuta,
-        "paga_diferenca": None,
-        "entrada_informada": entrada_informada,
-        "entrada_percentual": entrada_percentual,
-        "quartos": sessao.get("quartos"),
-        "banheiros": sessao.get("banheiros"),
-        "vagas": sessao.get("vagas"),
-        "pet": sessao.get("pet"),
-        "mobiliado": sessao.get("mobiliado"),
-        "objetivo_rural": sessao.get("objetivo_rural"),
-        "hectares": sessao.get("hectares"),
-        # Indicadores derivados da própria conversa.
-        "interacoes": max(1, len(sessao)),
-        "tempo_resposta": sessao.get("tempo_resposta", 9999),
-        # Variáveis úteis para a primeira versão do modelo.
-        "tipo_score": tipo_score,
-        "financiamento_indicado": financiamento == "sim",
-        "fgts_indicado": fgts == "sim",
-    }
-
-    return lead
+    return 0.5
 
 
-def filtro_deterministico(lead: Dict[str, Any]) -> Tuple[bool, list[str]]:
-    """
-    Aplica regras determinísticas.
+def _obter_permuta(lead_dict: Dict[str, Any]) -> float:
+    valor = lead_dict.get("permuta")
 
-    Importante:
-    ausência de informação NÃO é tratada automaticamente como reprovação.
-    Isso evita afirmar que o lead não possui capacidade financeira quando
-    simplesmente não forneceu determinado dado.
-    """
+    if isinstance(valor, bool):
+        return 1.0 if valor else 0.0
 
-    motivos: list[str] = []
+    texto = _texto(valor).lower()
 
-    tipo = lead.get("tipo_imovel")
-    operacao = lead.get("operacao")
-    financiamento = _normalizar_texto(lead.get("financiamento"))
+    if texto in {"sim", "s", "true", "1"} or "permuta" in texto:
+        return 1.0
 
-    if operacao == "locacao":
-        # O chatbot atual ainda não coleta garantia nem valor exato do aluguel.
-        # Portanto, não aplicamos a regra 3x sem esses dados.
-        if lead.get("renda_mensal_declarada", 0) <= 0:
-            motivos.append("Renda não informada para validação de locação.")
-
-    if tipo == "rural":
-        if financiamento in {
-            "sim",
-            "mcmv",
-            "minha casa minha vida",
-            "habitacional",
-        }:
-            motivos.append(
-                "Financiamento habitacional pode não ser aplicável ao imóvel rural; "
-                "necessita validação do corretor."
-            )
-
-    # A entrada não é coletada pelo chatbot atual.
-    # Não reprovar por ausência de entrada.
-    return True, motivos
+    return 0.0
 
 
-def heuristic_score(lead: Dict[str, Any]) -> int:
-    """
-    Score de sinais disponíveis na conversa.
+def _obter_fgts(lead_dict: Dict[str, Any]) -> float:
+    texto = _texto(lead_dict.get("fgts")).lower()
 
-    O score não representa capacidade de crédito.
-    """
+    if texto in {
+        "sim",
+        "s",
+        "true",
+        "1",
+        "vou utilizar",
+        "pretendo utilizar",
+    }:
+        return 1.0
 
-    score = 40
-
-    # Intenção temporal.
-    prazo = float(lead.get("prazo_score", 0.5))
-    score += int(prazo * 25)
-
-    # Definição do imóvel.
-    score += int(lead.get("tipo_score", 0.5) * 10)
-
-    # Dados financeiros declarados.
-    if lead.get("renda_mensal_declarada", 0) > 0:
-        score += 10
-
-    if lead.get("valor_interesse_estimado", 0) > 0:
-        score += 5
-
-    # Financiamento/FGTS indicam uma estratégia de aquisição definida,
-    # mas não comprovam capacidade financeira.
-    if lead.get("financiamento_indicado"):
-        score += 5
-
-    if lead.get("fgts_indicado"):
-        score += 3
-
-    # Primeiro imóvel aumenta a necessidade de abordagem orientativa,
-    # mas não deve ser tratado como sinal negativo.
-    if lead.get("primeiro_imovel"):
-        score += 2
-
-    # Interação mínima.
-    interacoes = int(lead.get("interacoes", 1))
-    score += min(5, max(0, interacoes - 3))
-
-    return max(0, min(100, score))
+    return 0.0
 
 
-def classificar_intencao(lead: Dict[str, Any], score: int) -> str:
-    prazo = float(lead.get("prazo_score", 0.5))
+def extract_features_for_kmeans(
+    lead_dict: Dict[str, Any],
+) -> np.ndarray:
+    renda = _obter_renda_total(lead_dict)
+    valor_imovel = _obter_faixa_valor(lead_dict)
+    valor_entrada = _obter_valor_entrada(lead_dict)
 
-    if score >= 75 and prazo >= 0.80:
-        return "ALTA"
+    if valor_imovel > 0:
+        entrada_percent = valor_entrada / valor_imovel
+    else:
+        entrada_percent = 0.0
 
-    if score >= 55 and prazo >= 0.50:
-        return "MÉDIA"
+    operacao_code = encode_operacao(lead_dict.get("objetivo"))
+    tipo_code = encode_tipo_imovel(
+        lead_dict.get("tipo_imovel") or lead_dict.get("tipo_interesse")
+    )
 
-    return "BAIXA"
+    if operacao_code == 1:
+        if renda > 0 and valor_imovel > 0:
+            renda_relativa = renda / valor_imovel
+        else:
+            renda_relativa = 1.0
+    else:
+        parcela_estimada = valor_imovel * 0.008 if valor_imovel > 0 else 1.0
+        if renda > 0:
+            renda_relativa = renda / parcela_estimada
+        else:
+            renda_relativa = 1.0
 
-
-def classificar_maturidade(lead: Dict[str, Any]) -> str:
-    campos = [
-        lead.get("tipo_imovel"),
-        lead.get("localizacao"),
-        lead.get("faixa_valor"),
-        lead.get("renda_familiar"),
-        lead.get("financiamento"),
-        lead.get("prazo_compra"),
-    ]
-
-    preenchidos = sum(1 for campo in campos if campo not in (None, "", "Não informado"))
-
-    if preenchidos >= 6:
-        return "ALTA"
-
-    if preenchidos >= 4:
-        return "MÉDIA"
-
-    return "BAIXA"
-
-
-def extract_features(lead: Dict[str, Any]) -> np.ndarray:
-    """
-    Gera vetor numérico.
-
-    Nesta primeira integração, utilizamos apenas variáveis que o chatbot
-    consegue fornecer ou derivar de suas próprias respostas.
-    """
-
-    renda = float(lead.get("renda_mensal_declarada", 0) or 0)
-    valor = float(lead.get("valor_interesse_estimado", 0) or 0)
-
-    # Relação apenas indicativa entre renda declarada e faixa de interesse.
-    # Não representa aprovação de crédito.
-    renda_valor = renda / valor if valor > 0 else 0.0
+    urgencia = _obter_urgencia(lead_dict)
+    composicao = _obter_composicao(lead_dict)
+    permuta = _obter_permuta(lead_dict)
+    fgts = _obter_fgts(lead_dict)
 
     return np.array(
         [
-            _tipo_score(lead.get("tipo_imovel_original")),
-            1.0 if lead.get("operacao") == "locacao" else 0.0,
-            renda_valor,
-            float(lead.get("prazo_score", 0.5)),
-            1.0 if lead.get("financiamento_indicado") else 0.0,
-            1.0 if lead.get("fgts_indicado") else 0.0,
-            1.0 if lead.get("primeiro_imovel") else 0.0,
-            float(lead.get("interacoes", 1)),
+            float(tipo_code),
+            float(operacao_code),
+            float(np.clip(renda_relativa, 0.0, 20.0)),
+            float(np.clip(entrada_percent, 0.0, 1.0)),
+            float(urgencia),
+            float(composicao),
+            float(permuta),
+            float(fgts),
         ],
         dtype=float,
     )
 
 
-def train_kmeans(
-    leads: Iterable[Dict[str, Any]],
-    k: int = DEFAULT_K,
-    save: bool = True,
-):
-    """
-    Treina o K-Means usando leads já normalizados.
+def heuristic_lead_score(sessao: Dict[str, Any]) -> int:
+    score = 40
 
-    O modelo deve ser treinado com uma base de leads, e não com um único
-    atendimento.
-    """
+    objetivo = _texto(sessao.get("objetivo")).lower()
+    prazo = _obter_prazo(sessao)
+    valor_entrada = _obter_valor_entrada(sessao)
+    faixa_valor = _obter_faixa_valor(sessao)
+    composicao = _texto(sessao.get("composicao_renda")).lower()
+    whatsapp = _texto(sessao.get("whatsapp"))
 
-    leads = list(leads)
+    if "invest" in objetivo:
+        score += 15
+    elif "comprar" in objetivo:
+        score += 10
+    elif "alugar" in objetivo:
+        score += 5
 
-    if len(leads) < k:
-        raise ValueError(
-            f"São necessários pelo menos {k} leads para treinar o K-Means."
+    if any(
+        termo in prazo
+        for termo in [
+            "imediata",
+            "imediato",
+            "imediatamente",
+            "agora",
+        ]
+    ):
+        score += 15
+    elif "3 meses" in prazo:
+        score += 10
+    elif "6 meses" in prazo:
+        score += 5
+
+    if valor_entrada >= 100000:
+        score += 15
+    elif valor_entrada >= 60000:
+        score += 10
+    elif valor_entrada >= 30000:
+        score += 5
+
+    if faixa_valor >= 1000000:
+        score += 10
+    elif faixa_valor >= 500000:
+        score += 5
+
+    if "sim" in composicao or "poderei" in composicao:
+        score += 5
+
+    if _obter_permuta(sessao):
+        score += 10
+
+    if len(re.sub(r"\D", "", whatsapp)) >= 10:
+        score += 5
+
+    return int(np.clip(score, 0, 100))
+
+
+def _determinar_intencao(sessao: Dict[str, Any]) -> str:
+    objetivo = _texto(sessao.get("objetivo")).lower()
+    uso = _texto(sessao.get("uso_imovel")).lower()
+    tipo = _texto(sessao.get("tipo_imovel")).lower()
+
+    if "invest" in objetivo or "invest" in uso:
+        return "INVESTIDOR"
+
+    if "alugar" in objetivo:
+        return "LOCAÇÃO"
+
+    if any(
+        termo in tipo
+        for termo in [
+            "fazenda",
+            "granja",
+            "chácara",
+            "chacara",
+            "sítio",
+            "sitio",
+            "rural",
+        ]
+    ):
+        return "RURAL / LAZER"
+
+    if "comprar" in objetivo or "moradia" in uso:
+        return "COMPRA RESIDENCIAL"
+
+    return "POTENCIAL COMPRADOR"
+
+
+def _determinar_maturidade(sessao: Dict[str, Any]) -> str:
+    prazo = _obter_prazo(sessao)
+    objetivo = _texto(sessao.get("objetivo")).lower()
+
+    if "alugar" in objetivo:
+        return "ALTA (LOCAÇÃO)"
+
+    if any(
+        termo in prazo
+        for termo in [
+            "imediata",
+            "imediato",
+            "imediatamente",
+            "agora",
+        ]
+    ):
+        return "ALTA (DECISÃO IMEDIATA)"
+
+    if "3 meses" in prazo:
+        return "MÉDIA (CURTO PRAZO)"
+
+    if "6 meses" in prazo:
+        return "MÉDIA (MÉDIO PRAZO)"
+
+    if "mais de 6 meses" in prazo:
+        return "BAIXA (LONGO PRAZO)"
+
+    return "EM MATURAÇÃO"
+
+
+def _determinar_prioridade(score: int, maturidade: str) -> str:
+    if "ALTA" in maturidade or score >= 75:
+        return "ALTA"
+
+    if "MÉDIA" in maturidade or score >= 55:
+        return "MÉDIA"
+
+    return "NORMAL"
+
+
+def _gerar_justificativas(
+    sessao: Dict[str, Any],
+    score: int,
+) -> List[str]:
+    justificativas = []
+
+    objetivo = sessao.get("objetivo")
+    if objetivo:
+        justificativas.append(f"Objetivo do cliente: {objetivo}.")
+
+    prazo = sessao.get("prazo_compra") or sessao.get("momento_compra")
+
+    if prazo:
+        justificativas.append(f"Prazo informado para fechamento: {prazo}.")
+
+    composicao = sessao.get("composicao_renda")
+    quantidade = sessao.get("quantidade_participantes")
+
+    if composicao:
+        texto_composicao = str(composicao).lower()
+        if "sim" in texto_composicao or "poderei" in texto_composicao:
+            justificativas.append(
+                f"Possibilidade de composição de renda identificada com {quantidade or 'múltiplos'} participante(s)."
+            )
+
+    renda_total = sessao.get("renda_total_declarada")
+    if renda_total:
+        justificativas.append(
+            f"Renda total declarada considerando a composição informada: {renda_total}."
         )
 
-    X = np.vstack([extract_features(lead) for lead in leads])
+    valor_entrada = sessao.get("valor_entrada")
+    if valor_entrada:
+        justificativas.append(f"Valor de entrada declarado: {valor_entrada}.")
 
-    scaler = StandardScaler()
-    X_scaled = scaler.fit_transform(X)
+    if _obter_permuta(sessao):
+        justificativas.append("Lead indicou possibilidade de permuta.")
 
-    model = KMeans(
-        n_clusters=k,
-        random_state=42,
-        n_init=10,
+    if sessao.get("renda_total_declarada") or sessao.get("renda_familiar"):
+        justificativas.append(
+            "Informação financeira declarada pelo lead; capacidade de crédito não foi verificada."
+        )
+    else:
+        justificativas.append(
+            "Informação financeira não declarada; ausência de renda não foi tratada como reprovação."
+        )
+
+    justificativas.append(f"Pontuação de triagem comercial: {score}/100.")
+    justificativas.append(
+        "A classificação representa apoio à decisão comercial e não aprovação de crédito."
     )
 
-    model.fit(X_scaled)
+    return justificativas
 
-    if save:
-        dump(model, MODEL_PATH)
-        dump(scaler, SCALER_PATH)
+
+def _gerar_recomendacao(
+    sessao: Dict[str, Any],
+    prioridade: str,
+) -> str:
+    if _obter_permuta(sessao):
+        return "Contatar o lead prioritariamente para coletar informações sobre a possível permuta."
+
+    composicao = _texto(sessao.get("composicao_renda")).lower()
+    if "sim" in composicao or "poderei" in composicao:
+        return (
+            "Lead apresenta possibilidade de composição de renda. "
+            "Encaminhar para análise ou simulação posterior sem interpretar como aprovação."
+        )
+
+    if prioridade == "ALTA":
+        return "Realizar contato ativo e apresentar opções compatíveis com o perfil."
+
+    objetivo = _texto(sessao.get("objetivo")).lower()
+    if "alugar" in objetivo:
+        return "Encaminhar opções de locação compatíveis com os dados informados."
+
+    return "Apresentar opções compatíveis com o perfil informado."
+
+
+def _interpretar_cluster(cluster_id: Optional[int]) -> Optional[str]:
+    if cluster_id is None:
+        return None
+    return f"Segmento comportamental K-Means #{cluster_id}"
+
+
+def carregar_modelo_kmeans() -> Tuple[Optional[KMeans], Optional[StandardScaler]]:
+    global _kmeans_model, _kmeans_scaler
+
+    if _kmeans_model is not None and _kmeans_scaler is not None:
+        return _kmeans_model, _kmeans_scaler
+
+    if not (os.path.exists(MODEL_PATH) and os.path.exists(SCALER_PATH)):
+        return None, None
+
+    try:
+        modelo = load(MODEL_PATH)
+        scaler = load(SCALER_PATH)
+
+        features_modelo = getattr(modelo, "n_features_in_", None)
+        features_scaler = getattr(scaler, "n_features_in_", None)
+        features_esperadas = len(FEATURE_NAMES)
+
+        if (
+            features_modelo != features_esperadas
+            or features_scaler != features_esperadas
+        ):
+            logger.warning(
+                "Artefatos K-Means incompatíveis com as %d features esperadas.",
+                features_esperadas,
+            )
+            return None, None
+
+        _kmeans_model = modelo
+        _kmeans_scaler = scaler
+        return _kmeans_model, _kmeans_scaler
+
+    except Exception as erro:
+        logger.exception("Erro ao carregar modelo K-Means: %s", erro)
+        _kmeans_model = None
+        _kmeans_scaler = None
+        return None, None
+
+
+def _validar_dataset(X: np.ndarray, k: int) -> None:
+    if X.ndim != 2:
+        raise ValueError("Dataset deve possuir duas dimensões.")
+
+    if X.shape[1] != len(FEATURE_NAMES):
+        raise ValueError("Quantidade de features incompatível.")
+
+    minimo = max(MIN_TRAINING_SAMPLES, k)
+    if X.shape[0] < minimo:
+        raise ValueError(
+            f"Quantidade insuficiente de amostras para treinamento. Mínimo: {minimo}. Disponíveis: {X.shape[0]}."
+        )
+
+    if not np.all(np.isfinite(X)):
+        raise ValueError("Dataset contém valores não finitos.")
+
+
+def train_kmeans(
+    df: pd.DataFrame,
+    k: int = DEFAULT_N_CLUSTERS,
+) -> Tuple[KMeans, StandardScaler]:
+    if df.empty:
+        raise ValueError("A base de treinamento está vazia.")
+
+    if k < 2:
+        raise ValueError("O K-Means precisa de pelo menos 2 clusters.")
+
+    vetores = []
+    for _, linha in df.iterrows():
+        try:
+            vetor = extract_features_for_kmeans(linha.to_dict())
+            if np.all(np.isfinite(vetor)):
+                vetores.append(vetor)
+        except Exception as erro:
+            logger.warning("Lead ignorado durante treinamento: %s", erro)
+
+    if not vetores:
+        raise ValueError("Nenhum lead válido encontrado.")
+
+    X = np.vstack(vetores)
+    _validar_dataset(X, k)
+
+    scaler = StandardScaler()
+    Xs = scaler.fit_transform(X)
+
+    model = KMeans(n_clusters=k, random_state=42, n_init=20)
+    model.fit(Xs)
+
+    diretorio_modelo = os.path.dirname(MODEL_PATH)
+    diretorio_scaler = os.path.dirname(SCALER_PATH)
+
+    if diretorio_modelo:
+        os.makedirs(diretorio_modelo, exist_ok=True)
+    if diretorio_scaler:
+        os.makedirs(diretorio_scaler, exist_ok=True)
+
+    dump(model, MODEL_PATH)
+    dump(scaler, SCALER_PATH)
+
+    global _kmeans_model, _kmeans_scaler
+    _kmeans_model = model
+    _kmeans_scaler = scaler
+
+    logger.info(
+        "K-Means treinado com sucesso. Amostras: %d. Features: %d. Clusters: %d.",
+        X.shape[0],
+        X.shape[1],
+        k,
+    )
 
     return model, scaler
 
 
-def carregar_modelo():
-    """
-    Carrega modelo e scaler se já tiverem sido treinados.
-    """
-
-    if not MODEL_PATH.exists() or not SCALER_PATH.exists():
-        return None, None
-
-    try:
-        model = load(MODEL_PATH)
-        scaler = load(SCALER_PATH)
-        return model, scaler
-    except Exception:
-        return None, None
-
-
-def interpretar_cluster(
-    cluster: Optional[int],
-    score: int,
-    intencao: str,
-    maturidade: str,
-) -> str:
-    """
-    Primeira camada de interpretação operacional.
-
-    IMPORTANTE:
-    os nomes dos clusters são provisórios até que os centroides do modelo
-    treinado sejam analisados com os dados reais.
-    """
-
-    if cluster is None:
-        return "Modelo ainda não treinado"
-
-    if intencao == "ALTA" and maturidade == "ALTA":
-        return "Perfil de compra estruturada"
-
-    if intencao == "ALTA":
-        return "Alta intenção de compra"
-
-    if maturidade == "BAIXA":
-        return "Perfil exploratório"
-
-    return f"Cluster {cluster}"
-
-
-def definir_prioridade(
-    score: int,
-    intencao: str,
-    maturidade: str,
-) -> str:
-
-    if score >= 75 and intencao == "ALTA":
-        return "ALTA"
-
-    if score >= 55 or intencao == "MÉDIA":
-        return "MÉDIA"
-
-    return "BAIXA"
-
-
-def gerar_recomendacao(
-    lead: Dict[str, Any],
-    prioridade: str,
-    intencao: str,
-    maturidade: str,
-) -> str:
-
-    financiamento = _normalizar_texto(lead.get("financiamento"))
-    prazo = _normalizar_texto(lead.get("prazo_compra"))
-
-    if prioridade == "ALTA":
-        if financiamento == "sim":
-            return (
-                "Recomenda-se contato prioritário e abordagem direcionada "
-                "para financiamento, validando com o corretor as condições "
-                "reais de aquisição."
-            )
-
-        return (
-            "Recomenda-se contato prioritário e abordagem personalizada, "
-            "explorando as preferências declaradas e a próxima etapa da compra."
-        )
-
-    if prioridade == "MÉDIA":
-        return (
-            "Recomenda-se acompanhamento ativo, com abordagem orientativa "
-            "e atualização das informações conforme o lead evoluir."
-        )
-
-    if "mais de 6" in prazo:
-        return (
-            "Recomenda-se nutrição do relacionamento e acompanhamento "
-            "periódico, sem priorizar contato comercial imediato."
-        )
-
-    return (
-        "Recomenda-se acompanhamento e qualificação progressiva antes "
-        "de intensificar a abordagem comercial."
-    )
-
-
-def classify_lead(
-    lead: Dict[str, Any],
-    model=None,
-    scaler=None,
+def treinar_kmeans(
+    df: pd.DataFrame,
+    k: int = DEFAULT_N_CLUSTERS,
 ) -> Dict[str, Any]:
-
-    aprovado, observacoes_filtro = filtro_deterministico(lead)
-
-    if not aprovado:
+    try:
+        model, _ = train_kmeans(df, k)
         return {
-            "status": "DESCARTADO",
-            "score": 0,
-            "cluster": None,
-            "observacoes_filtro": observacoes_filtro,
+            "sucesso": True,
+            "treinado": True,
+            "quantidade_clusters": int(model.n_clusters),
+            "quantidade_features": len(FEATURE_NAMES),
+            "features": FEATURE_NAMES,
+            "modelo_path": MODEL_PATH,
+            "scaler_path": SCALER_PATH,
+        }
+    except Exception as erro:
+        logger.exception("Erro no treinamento do K-Means.")
+        return {
+            "sucesso": False,
+            "treinado": False,
+            "erro": str(erro),
         }
 
-    score = heuristic_score(lead)
-    intencao = classificar_intencao(lead, score)
-    maturidade = classificar_maturidade(lead)
 
-    cluster = None
+def qualificar_sessao_chatbot(sessao: Dict[str, Any]) -> Dict[str, Any]:
+    score = heuristic_lead_score(sessao)
+    intencao = _determinar_intencao(sessao)
+    maturidade = _determinar_maturidade(sessao)
+    prioridade = _determinar_prioridade(score, maturidade)
+    justificativas = _gerar_justificativas(sessao, score)
+    recomendacao = _gerar_recomendacao(sessao, prioridade)
+
+    observacoes_filtro = []
+    possui_renda = bool(
+        sessao.get("renda_total_declarada") or sessao.get("renda_familiar")
+    )
+
+    if not possui_renda:
+        observacoes_filtro.append(
+            "Renda não declarada. Tratada como informação incompleta, não como reprovação."
+        )
+
+    composicao = _texto(sessao.get("composicao_renda")).lower()
+    if "sim" in composicao or "poderei" in composicao:
+        observacoes_filtro.append("Possibilidade de composição de renda identificada.")
+
+    cluster_id = None
+    model, scaler = carregar_modelo_kmeans()
 
     if model is not None and scaler is not None:
         try:
-            features = extract_features(lead).reshape(1, -1)
-            features_scaled = scaler.transform(features)
-            cluster = int(model.predict(features_scaled)[0])
-        except Exception:
-            cluster = None
+            vetor = extract_features_for_kmeans(sessao).reshape(1, -1)
+            vetor_scaled = scaler.transform(vetor)
+            cluster_id = int(model.predict(vetor_scaled)[0])
+            justificativas.append(
+                f"K-Means identificou o segmento comportamental #{cluster_id}."
+            )
+        except Exception as erro:
+            logger.warning("Falha na inferência K-Means: %s", erro)
+            justificativas.append(
+                "K-Means indisponível para este lead. A classificação permanece baseada nas regras e no score."
+            )
+    else:
+        justificativas.append(
+            "Modelo K-Means ainda não treinado ou incompatível com as features atuais."
+        )
 
-    prioridade = definir_prioridade(
-        score=score,
-        intencao=intencao,
-        maturidade=maturidade,
-    )
-
-    perfil_cluster = interpretar_cluster(
-        cluster=cluster,
-        score=score,
-        intencao=intencao,
-        maturidade=maturidade,
-    )
-
-    recomendacao = gerar_recomendacao(
-        lead=lead,
-        prioridade=prioridade,
-        intencao=intencao,
-        maturidade=maturidade,
-    )
+    perfil_cluster = _interpretar_cluster(cluster_id)
+    if perfil_cluster is None:
+        perfil_cluster = f"Perfil baseado em regras: {intencao}"
 
     return {
         "status": "QUALIFICADO",
         "score": score,
-        "cluster": cluster,
+        "cluster": cluster_id,
         "perfil_cluster": perfil_cluster,
         "intencao_compra": intencao,
         "maturidade": maturidade,
         "prioridade": prioridade,
         "recomendacao": recomendacao,
+        "justificativas": justificativas,
         "observacoes_filtro": observacoes_filtro,
-        "dados_financeiros_declarados": True,
-        "capacidade_financeira_verificada": False,
+        "dados_financeiros_declarados": possui_renda,
     }
 
 
-def qualificar_sessao_chatbot(
-    sessao: Dict[str, Any],
-    model=None,
-    scaler=None,
-) -> Dict[str, Any]:
-    """
-    Ponto de integração entre chatbot_engine.py e o motor de ML.
-    """
-
-    lead = preparar_lead_do_chatbot(sessao)
-
-    if model is None or scaler is None:
-        model, scaler = carregar_modelo()
-
-    resultado = classify_lead(
-        lead=lead,
-        model=model,
-        scaler=scaler,
-    )
-
-    resultado["lead_normalizado"] = lead
-
-    return resultado
-
-
-if __name__ == "__main__":
-
-    lead_teste = {
-        "objetivo": "Comprar imóvel",
-        "tipo_imovel": "Apartamento",
-        "uso_imovel": "Moradia",
-        "primeiro_imovel": "Sim",
-        "localizacao": "São Pedro",
-        "faixa_valor": "R$ 150 mil a R$ 300 mil",
-        "financiamento": "Sim",
-        "fgts": "Sim",
-        "renda_familiar": "R$ 5.000 a R$ 8.000",
-        "prazo_compra": "Imediatamente",
-        "quartos": "2 quartos",
-        "banheiros": "1 banheiro",
-        "vagas": "1 vaga",
-        "permuta": False,
+def status_modelo() -> Dict[str, Any]:
+    modelo, scaler = carregar_modelo_kmeans()
+    return {
+        "modelo_existe": os.path.exists(MODEL_PATH),
+        "scaler_existe": os.path.exists(SCALER_PATH),
+        "modelo_carregado": modelo is not None,
+        "scaler_carregado": scaler is not None,
+        "model_path": MODEL_PATH,
+        "scaler_path": SCALER_PATH,
+        "quantidade_features": len(FEATURE_NAMES),
+        "features": FEATURE_NAMES,
+        "clusters": int(modelo.n_clusters) if modelo is not None else None,
     }
-
-    resultado = qualificar_sessao_chatbot(lead_teste)
-
-    print("\n=== TESTE DO MOTOR INTEGRADO ===\n")
-
-    for chave, valor in resultado.items():
-        print(f"{chave}: {valor}")

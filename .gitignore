@@ -7,6 +7,22 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
+# Python cache and bytecode
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Temporary/conflict files
+chatbot_engine_conflito.py
+chatbot_engine_new.py
+chatbot_engine_v2.py
+*.orig
+*.rej
+*.tmp
+
+tavel
+
 node_modules
 dist
 dist-ssr

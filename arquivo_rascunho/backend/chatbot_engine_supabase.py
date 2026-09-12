@@ -103,10 +103,7 @@ def criar_relatorio(sessao, whatsapp, qualificacao):
     )
 
     observacoes_texto = (
-        "\n".join(
-            f"- {observacao}"
-            for observacao in observacoes
-        )
+        "\n".join(f"- {observacao}" for observacao in observacoes)
         if observacoes
         else "- Nenhuma observação adicional."
     )
@@ -219,6 +216,7 @@ OBSERVAÇÕES DOS FILTROS
 O sistema não realiza consulta de CPF, análise de crédito ou
 verificação externa de capacidade financeira.
 """
+
 
 def enviar_whatsapp(relatorio, phone=None):
     """Envia o relatório por Z-API para phone ou NUMERO_CORRETOR."""

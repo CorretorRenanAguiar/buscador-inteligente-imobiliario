@@ -1,0 +1,358 @@
+RELATÓRIO DE CONSOLIDAÇÃO - BUSCADOR INTELIGENTE IMOBILIÁRIO v2
+==================================================================
+
+DATA: 2026-08-23
+OBJETIVO: Consolidação manual da estrutura do projeto, unificando versões duplicadas
+
+==================================================================
+1. ARQUIVOS OFICIAIS MANTIDOS
+==================================================================
+
+BACKEND:
+--------
+✓ main.py
+  - Ponto de entrada da aplicação FastAPI
+  - Mantém endpoints GET / e POST /chat
+  - Importa: chatbot_engine
+
+✓ chatbot_engine.py
+  - Motor oficial único do chatbot
+  - Lógica conversacional completa
+  - MODIFICADO: Adicionada persistência Supabase
+  - Importa: database_supabase, enhanced_filters_kmeans
+
+✓ database_supabase.py
+  - Camada oficial de persistência
+  - Funções: get_supabase(), salvar_lead_supabase()
+  - Responsável por salvar leads na tabela 'leads'
+
+✓ enhanced_filters_kmeans.py
+  - Motor híbrido de qualificação
+  - Função: qualificar_sessao_chatbot()
+  - Pipeline: normalização → filtros → score → K-Means → prioridade
+
+CONFIGURAÇÕES:
+✓ .env (preservado com valores existentes - não modificado)
+✓ .env.example (CRIADO - modelo com nomes de variáveis necessárias)
+✓ requirements.txt
+✓ runtime.txt
+✓ Procfile
+✓ __init__.py
+
+FRONTEND:
+✓ src/App.jsx e componentes relacionados (não modificados)
+✓ Preserve CookieBanner para LGPD
+
+ARQUIVO DE EXECUÇÃO:
+==================================================================
+2. ARQUIVOS MOVIDOS PARA arquivo_rascunho/
+==================================================================
+
+BACKEND (Versões antigas/alternativas):
+arquivo_rascunho/backend/
+  ├── chatbot_engine_supabase.py
+  │   └─ Versão alternativa com persistência (funcionalidade integrada)
+  │   
+  ├── database.py
+  │   └─ Versão simples de get_supabase (substituída por database_supabase.py)
+  │   
+  ├── enhanced_filters_kmeans_hibrido.py
+  │   └─ Alternativa ML não utilizada no fluxo atual
+  │   
+  ├── ml_engine.py
+  │   └─ K-Means simples (funcionalidade em enhanced_filters_kmeans.py)
+  │   
+  └── backups/
+      └── chatbot_engine_backup.py
+          └─ Backup histórico com credenciais hardcoded (referência somente)
+
+TESTES (Não-essenciais para execução):
+arquivo_rascunho/testes/
+  ├── test_chatbot.py
+  │   └─ Teste de fluxo conversacional
+  │   
+  ├── test_write.txt
+  │   └─ Teste simples (conteúdo: "OK")
+  │   
+  └── verify_chatbot_engine.py
+      └─ Verificação de sintaxe e formatação
+
+==================================================================
+3. ARQUIVOS MODIFICADOS
+==================================================================
+
+backend/chatbot_engine.py
+  ANTES: Sem persistência Supabase
+  DEPOIS: Com persistência Supabase integrada
+  
+  Modificações:
+  1. Adicionado import: from database_supabase import salvar_lead_supabase
+  2. Etapa final (whatsapp/whatsapp_permuta):
+     - Chamada: persistencia = salvar_lead_supabase(sessao, qualificacao, session_id)
+     - Retorno inclui: "qualificacao" com score, cluster, intencao_compra, etc
+     - Tratamento de erro: aviso_banco se persistência falhar
+  3. Preservada: Lógica conversacional, relatório, envio WhatsApp
+
+backend/.env.example
+  CRIADO: Modelo de variáveis de ambiente necessárias
+  Variáveis listadas:
+  - SUPABASE_URL
+  - SUPABASE_KEY
+  - ZAPI_INSTANCE
+  - ZAPI_TOKEN
+  - ZAPI_CLIENT_TOKEN
+  - NUMERO_CORRETOR
+
+==================================================================
+4. ARQUIVOS CRIADOS
+==================================================================
+
+✓ arquivo_rascunho/ (diretório de histórico)
+✓ arquivo_rascunho/backend/ 
+✓ arquivo_rascunho/backend/backups/
+✓ arquivo_rascunho/testes/
+✓ arquivo_rascunho/outros/
+✓ backend/.env.example
+
+==================================================================
+5. IMPORTS - VALIDAÇÃO
+==================================================================
+
+Fluxo validado:
+main.py
+  └─> import chatbot_engine
+       └─> from database_supabase import salvar_lead_supabase
+       └─> from enhanced_filters_kmeans import qualificar_sessao_chatbot
+
+Sem referências a:
+✗ chatbot_engine_supabase (substituído)
+✗ database.py (substituído por database_supabase)
+✗ ml_engine (funcionalidade integrada)
+✗ enhanced_filters_kmeans_hibrido (alternativa não utilizada)
+
+==================================================================
+6. RESPONSABILIDADES FINAIS
+==================================================================
+
+ARQUIVO RESPONSÁVEL PELO CHATBOT:
+>> backend/chatbot_engine.py
+   - Função: async processar_chatbot(mensagem, session_id)
+   - Trata toda lógica conversacional
+   - Qualifica lead via enhanced_filters_kmeans.py
+   - Persiste no Supabase via database_supabase.py
+
+ARQUIVO RESPONSÁVEL PELO SUPABASE:
+>> backend/database_supabase.py
+   - Função: get_supabase() → Cliente Supabase reutilizável
+   - Função: salvar_lead_supabase(sessao, qualificacao, session_id)
+   - Insere dados em tabela 'leads' com campos normalizados
+
+ARQUIVO RESPONSÁVEL PELO ML/K-MEANS:
+>> backend/enhanced_filters_kmeans.py
+   - Função: qualificar_sessao_chatbot(sessao)
+   - Pipeline híbrido: normalização → filtros → score → K-Means
+   - Retorna: status, score, cluster, intencao_compra, maturidade, 
+             prioridade, perfil_cluster, recomendacao, observacoes_filtro
+
+==================================================================
+7. FLUXO PRINCIPAL DA APLICAÇÃO
+==================================================================
+
+Frontend (React)
+     ↓
+   POST /chat [main.py]
+     ↓
+[chatbot_engine.py]
+   ├→ Processa mensagem (contexto de etapas)
+   ├→ Qualifica lead [enhanced_filters_kmeans.py]
+   ├→ Salva no Supabase [database_supabase.py]
+   ├→ Envia relatório via WhatsApp (Z-API)
+   └→ Retorna resposta + qualificação
+     ↓
+   Frontend (JSON)
+
+==================================================================
+8. DADOS DO LEAD COLETADOS
+==================================================================
+
+Dados de coleta:
+- whatsapp
+- localizacao
+- faixa_valor
+- tipo_imovel
+- objetivo
+- quartos
+- banheiros
+- vagas
+- pet
+- prazo_compra
+- financiamento
+- fgts
+- renda_familiar
+- mobiliado (locação)
+- uso_imovel
+- primeiro_imovel
+- objetivo_rural
+- hectares
+- permuta
+
+Dados de qualificação:
+- score (0-100)
+- cluster (K-Means)
+- intencao_compra (ALTA/MÉDIA/BAIXA)
+- maturidade (ALTA/MÉDIA/BAIXA)
+- prioridade (ALTA/MÉDIA/BAIXA)
+- perfil_cluster (descrição nominal)
+- recomendacao (texto de abordagem)
+- observacoes_filtro (lista de observações)
+
+==================================================================
+9. CONFIGURAÇÃO SUPABASE
+==================================================================
+
+Estrutura existente mantida (sem migrações):
+
+Tabela: leads
+  - Campos existentes preservados
+  - Novos dados inseridos conforme disponibilidade
+  - Funções de normalização em database_supabase.py:
+    • _texto() → Normaliza valores para string ou None
+    • _inteiro_da_resposta() → Extrai números de respostas textuais
+
+Credenciais:
+  - SUPABASE_URL e SUPABASE_KEY em variáveis de ambiente
+  - Nunca hardcoded no código-fonte
+
+==================================================================
+10. PREPARAÇÃO PARA MULTI-IMOBILIÁRIA (tenant_id)
+==================================================================
+
+Implementado (estrutura, não lógica):
+  - Coleta de tenant_id preparada para receber valor futuro
+  - session_id persistido para rastreabilidade
+  - Estrutura pronta para expandir com tenant_id por lead
+
+Não implementado:
+  - Painel administrativo
+  - Sistema de login
+  - Cobrança/SaaS
+  - Filtragem por tenant no frontend
+
+Próxima etapa:
+  - Adicionar tenant_id obrigatório no POST /chat
+  - Persistir tenant_id na tabela 'leads'
+  - Filtrar dados por tenant em queries
+
+==================================================================
+11. CREDENCIAIS E SEGURANÇA
+==================================================================
+
+ATUAIS:
+✓ Variáveis de ambiente (.env) - correto
+✓ .env.example criado - sem valores reais
+
+HISTÓRICO (verificar e remover):
+⚠️ backend/backups/chatbot_engine_backup.py - contém credenciais hardcoded
+   Recomendação: revisar e remover credenciais deste arquivo historicamente
+
+==================================================================
+12. PONTOS QUE PRECISAM TRATAMENTO NA PRÓXIMA ETAPA
+==================================================================
+
+1. Evolution API / WhatsApp
+   - Não implementado ainda (conforme requisito)
+   - Estrutura pronta: evolution_api.py será criado entre chatbot_engine.py e Z-API
+   - Remover Z-API ou manter paralelo durante transição
+
+2. Treinamento do K-Means
+   - Modelo não foi treinado nesta etapa
+   - Sistema opera com filtros + score enquanto base de dados cresce
+   - Próximo: train_kmeans() em enhanced_filters_kmeans.py com dados reais
+
+3. tenant_id / Multi-imobiliária
+   - Estrutura preparada, implementação pendente
+   - Adicionar obrigatoriedade no frontend
+   - Validar tenant_id no backend
+
+4. Cache / Sessões
+   - Sessões em memória (dict: sessoes = {})
+   - Produção: migrar para Redis ou banco de dados
+
+5. Rate limit / Throttling
+   - Não implementado
+   - Considerar em ambiente de produção
+
+6. Logs estruturados
+   - Básicos implementados
+   - Considerar: Sentry, DataDog ou similar para produção
+
+7. Testes automatizados
+   - test_chatbot.py e verify_chatbot_engine.py existem
+   - Completar com testes de integração e persistência
+
+8. Segurança CORS
+   - allow_origins=["*"] em main.py
+   - Restringir em produção
+
+9. Backup do modelo K-Means
+   - kmeans_model.joblib salvo localmente
+   - Produção: considerar versionamento em S3/GCS
+
+==================================================================
+13. LIMPEZA / HOUSEKEEPING FUTURO
+==================================================================
+
+Python cache - não foi deletado nesta etapa:
+  - backend/__pycache__/ (deixado como está)
+  - Será tratado por .gitignore
+
+Recomendações:
+  - Adicionar .gitignore global: __pycache__/, *.pyc
+  - Adicionar ao .gitignore: .env (em produção)
+  - Versionar .env.example como template
+
+==================================================================
+14. RESUMO DE CONSOLIDAÇÃO
+==================================================================
+
+✓ Uma única versão oficial de cada componente
+✓ Lógica de negócio preservada e integrada
+✓ Persistência Supabase agora funcional
+✓ Dados de qualificação trafegam completos
+✓ Todos os arquivos antigos preservados (não apagados)
+✓ Estrutura preparada para multi-imobiliária
+✓ Imports ajustados e validados
+
+Estrutura limpa:
+backend/
+  ├── main.py (entrada)
+  ├── chatbot_engine.py (motor único)
+  ├── database_supabase.py (persistência)
+  ├── enhanced_filters_kmeans.py (qualificação)
+  ├── __init__.py
+  ├── prompts/
+  ├── .env (credenciais - não commitado)
+  ├── .env.example (template - commitado)
+  ├── requirements.txt
+  ├── Procfile
+  └── runtime.txt
+
+arquivo_rascunho/ (histórico completo preservado)
+  ├── backend/
+  ├── testes/
+  └── outros/
+
+==================================================================
+FIM DO RELATÓRIO
+==================================================================
+Data de conclusão: 2026-08-23
+Status: ✓ CONSOLIDAÇÃO CONCLUÍDA COM SUCESSO
+
+Próximos passos (não nesta etapa):
+1. Treinar modelo K-Means com dados reais
+2. Implementar Evolution API para WhatsApp
+3. Adicionar tenant_id como campo obrigatório
+4. Migrar sessões para Redis/banco de dados
+5. Implementar testes de integração completos
+6. Configurar CORS para produção
+7. Adicionar logs estruturados e monitoramento

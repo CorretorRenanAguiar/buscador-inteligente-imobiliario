@@ -1,91 +1,84 @@
-import { supabase } from "../lib/supabase"
+import { supabase } from "../lib/supabase";
 
 function TesteSupabase() {
-
   async function testarBanco() {
 
-    const { data, error } = await supabase
-      .from("leads")
-      .insert([
-        {
-          nome: "Renan Aguiar",
+    console.log("TESTE DE CONEXÃO COM SUPABASE");
 
-          email: "teste@gmail.com",
+    const leadTeste = {
+      telefone: "(32)99999-9999",
+      bairro: "São Pedro",
+      faixa_preco_interesse: "R$ 200.000 a R$ 350.000",
+      tipo_interesse: "Apartamento",
+      objetivo: "Compra",
+      origem_lead: "Teste Frontend"
+    };
 
-          telefone: "(32)99999-9999",
+    console.log("Dados enviados:", leadTeste);
 
-          cidade: "Juiz de Fora",
+    try {
+      const { error } = await supabase
+        .from("leads")
+        .insert([leadTeste]);
 
-          bairro: "São Pedro",
+      if (error) {
 
-          faixa_renda: "R$ 3.000 a R$ 5.000",
+        console.error("ERRO AO INSERIR NO SUPABASE");
 
-          faixa_preco_interesse:
-            "R$ 200.000 a R$ 350.000",
+        console.error("Mensagem:", error.message);
+        console.error("Código:", error.code);
+        console.error("Detalhes:", error.details);
+        console.error("Hint:", error.hint);
 
-          tipo_interesse: "Apartamento",
+        alert(
+          `Erro ao inserir no Supabase:\n\n${error.message}`
+        );
 
-          objetivo: "Compra",
+        return;
+      }
 
-          origem_lead: "Site"
-        }
-      ])
 
-    if (error) {
+      console.log("SUPABASE: INSERT REALIZADO COM SUCESSO");
 
-      console.error(
-        "ERRO AO INSERIR:",
-        error
-      )
 
-      alert("Erro ao conectar banco")
+      alert("Conexão com Supabase OK! Lead de teste salvo.");
 
-      return
+    } catch (erro) {
+
+      console.error("ERRO INESPERADO");
+
+      console.error(erro);
+
+      alert(
+        `Erro inesperado ao conectar com o Supabase:\n\n${erro.message}`
+      );
     }
-
-    console.log("SUCESSO:", data)
-
-    alert("Lead salvo com sucesso!")
-
   }
 
   return (
-
     <div
       style={{
         marginTop: "40px",
         textAlign: "center"
       }}
     >
-
       <button
         onClick={testarBanco}
-
         style={{
           backgroundColor: "#d4a017",
-
           color: "#ffffff",
-
           border: "none",
-
           padding: "16px 28px",
-
           borderRadius: "12px",
-
           fontSize: "16px",
-
           cursor: "pointer",
-
           fontWeight: "bold"
         }}
       >
         Testar Conexão Supabase
       </button>
-
     </div>
-
-  )
-
+  );
 }
 
-export default TesteSupabase
+export default TesteSupabase;

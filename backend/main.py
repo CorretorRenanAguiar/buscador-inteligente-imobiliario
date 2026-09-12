@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from chatbot_engine import processar_chatbot
+from backend.chatbot_engine import processar_chatbot
 
 app = FastAPI()
 
@@ -30,6 +30,7 @@ app.add_middleware(
 class ChatRequest(BaseModel):
     mensagem: str
     session_id: str
+    tenant_id: str = "desenvolvimento"
 
 
 @app.get("/")
@@ -43,7 +44,11 @@ def home():
 @app.post("/chat")
 async def chat(request: ChatRequest):
     try:
-        resposta = await processar_chatbot(request.mensagem, request.session_id)
+        resposta = await processar_chatbot(
+            request.mensagem,
+            request.session_id,
+            request.tenant_id,
+        )
         return resposta
     except Exception:
         logger.exception("Erro ao processar /chat")

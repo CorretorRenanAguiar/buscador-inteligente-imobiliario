@@ -32,7 +32,6 @@ from joblib import dump, load
 from sklearn.cluster import KMeans
 from sklearn.preprocessing import StandardScaler
 
-
 BASE_DIR = Path(__file__).resolve().parent
 MODEL_PATH = BASE_DIR / "kmeans_model.joblib"
 SCALER_PATH = BASE_DIR / "scaler.joblib"
@@ -198,9 +197,7 @@ def filtro_deterministico(
 
     if operacao == "locacao":
         if lead.get("renda_mensal_declarada", 0) <= 0:
-            motivos.append(
-                "Renda não informada para validação de locação."
-            )
+            motivos.append("Renda não informada para validação de locação.")
 
     if tipo == "rural" and financiamento in {
         "sim",
@@ -269,11 +266,7 @@ def classificar_maturidade(lead: Dict[str, Any]) -> str:
         lead.get("prazo_compra"),
     ]
 
-    preenchidos = sum(
-        1
-        for campo in campos
-        if campo not in (None, "", "Não informado")
-    )
+    preenchidos = sum(1 for campo in campos if campo not in (None, "", "Não informado"))
 
     if preenchidos >= 6:
         return "ALTA"
@@ -498,47 +491,8 @@ def classify_lead(
     }
 
 
-def qualificar_sessao_chatbot(
-    sessao: Dict[str, Any],
-    model=None,
-    scaler=None,
-) -> Dict[str, Any]:
-    lead = preparar_lead_do_chatbot(sessao)
-
-    if model is None or scaler is None:
-        model, scaler = carregar_modelo()
-
-    resultado = classify_lead(
-        lead=lead,
-        model=model,
-        scaler=scaler,
-    )
-
-    resultado["lead_normalizado"] = lead
-
-    return resultado
-
-
-if __name__ == "__main__":
-    lead_teste = {
-        "objetivo": "Comprar imóvel",
-        "tipo_imovel": "Apartamento",
-        "uso_imovel": "Moradia",
-        "primeiro_imovel": "Sim",
-        "localizacao": "São Pedro",
-        "faixa_valor": "R$ 150 mil a R$ 300 mil",
-        "financiamento": "Sim",
-        "fgts": "Sim",
-        "renda_familiar": "R$ 5.000 a R$ 8.000",
-        "prazo_compra": "Imediatamente",
-        "quartos": "2 quartos",
-        "banheiros": "1 banheiro",
-        "vagas": "1 vaga",
-        "permuta": False,
-    }
-
-    resultado = qualificar_sessao_chatbot(lead_teste)
-
-    print("\n=== TESTE DO MOTOR INTEGRADO ===\n")
-    for chave, valor in resultado.items():
-        print(f"{chave}: {valor}")
+def qualificar_sessao_chatbot(sessao: Dict[str, Any]) -> Dict[str, Any]:
+    """Função oficial de qualificação a partir da sessão do chatbot."""
+    lead_normalizado = preparar_lead_do_chatbot(sessao)
+    model, scaler = carregar_modelo()
+    return classify_lead(lead_normalizado, model, scaler)
