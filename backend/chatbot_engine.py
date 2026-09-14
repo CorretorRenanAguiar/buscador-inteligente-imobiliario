@@ -216,7 +216,7 @@ def classificar_perfil(dados):
 # ============================================
 
 
-def _extrair_numero_vagas(texto):
+def _extrair_numero(texto):
 
     if not texto:
 
@@ -255,9 +255,9 @@ def salvar_lead_supabase(dados):
             "tipo_interesse": dados.get("objetivo"),
             "tipo_imovel": dados.get("tipo_imovel"),
             "objetivo": dados.get("objetivo"),
-            "quartos": dados.get("quartos"),
-            "banheiros": dados.get("banheiros"),
-            "vagas_garagem": _extrair_numero_vagas(dados.get("vagas_garagem")),
+            "quartos": _extrair_numero(dados.get("quartos")),
+            "banheiros": _extrair_numero(dados.get("banheiros")),
+            "vagas_garagem": _extrair_numero(dados.get("vagas_garagem")),
             "aceita_pet": dados.get("aceita_pet"),
             "momento_compra": dados.get("momento_compra"),
             "financiamento": dados.get("financiamento"),
