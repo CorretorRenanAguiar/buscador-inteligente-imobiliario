@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from backend.chatbot_engine import processar_chatbot
+from chatbot_engine import processar_chatbot
 
 app = FastAPI()
 
