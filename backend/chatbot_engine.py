@@ -216,6 +216,21 @@ def classificar_perfil(dados):
 # ============================================
 
 
+def _extrair_numero_vagas(texto):
+
+    if not texto:
+
+        return 0
+
+    numeros = re.findall(r"\d+", str(texto))
+
+    if numeros:
+
+        return int(numeros[0])
+
+    return 0
+
+
 def salvar_lead_supabase(dados):
 
     try:
@@ -242,7 +257,7 @@ def salvar_lead_supabase(dados):
             "objetivo": dados.get("objetivo"),
             "quartos": dados.get("quartos"),
             "banheiros": dados.get("banheiros"),
-            "vagas_garagem": dados.get("vagas_garagem"),
+            "vagas_garagem": _extrair_numero_vagas(dados.get("vagas_garagem")),
             "aceita_pet": dados.get("aceita_pet"),
             "momento_compra": dados.get("momento_compra"),
             "financiamento": dados.get("financiamento"),
