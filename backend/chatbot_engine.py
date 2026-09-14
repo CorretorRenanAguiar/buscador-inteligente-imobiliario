@@ -20,6 +20,7 @@ load_dotenv()
 
 ZAPI_INSTANCE = os.getenv("ZAPI_INSTANCE")
 ZAPI_TOKEN = os.getenv("ZAPI_TOKEN")
+ZAPI_CLIENT_TOKEN = os.getenv("ZAPI_CLIENT_TOKEN")
 NUMERO_CORRETOR = os.getenv("NUMERO_CORRETOR")
 # ============================================
 # SUPABASE
@@ -299,6 +300,10 @@ def enviar_whatsapp(relatorio):
 
         headers = {"Content-Type": "application/json"}
 
+        # Z-API exige este header quando o "Token de Seguranca" da conta esta ativado
+        if ZAPI_CLIENT_TOKEN:
+            headers["Client-Token"] = ZAPI_CLIENT_TOKEN
+
         print("URL:", url)
         print("PAYLOAD:", payload)
 
@@ -327,7 +332,7 @@ def enviar_whatsapp(relatorio):
 # ============================================
 
 
-async def processar_chatbot(mensagem, session_id):
+async def processar_chatbot(mensagem, session_id, tenant_id="desenvolvimento"):
 
     mensagem = mensagem.strip()
 
@@ -412,7 +417,7 @@ async def processar_chatbot(mensagem, session_id):
         tipo = mensagem.lower()
 
         # RURAL
- 
+
         if tipo in ["granja", "fazenda", "s├¡tio", "sitio", "ch├ícara", "chacara"]:
 
             sessao["etapa"] = "objetivo_rural"
@@ -439,7 +444,6 @@ async def processar_chatbot(mensagem, session_id):
             }
 
         # IM├ôVEIS URBANOS
-     
 
         sessao["etapa"] = "uso_imovel"
 
@@ -709,8 +713,7 @@ async def processar_chatbot(mensagem, session_id):
         sessao["etapa"] = "whatsapp"
 
         return {
-            "mensagem": "Perfeito.\n\n"
-            "Informe seu WhatsApp com DDD para continuar.",
+            "mensagem": "Perfeito.\n\n" "Informe seu WhatsApp com DDD para continuar.",
             "opcoes": [],
         }
     # WHATSAPP
