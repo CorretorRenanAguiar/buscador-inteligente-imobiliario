@@ -7,7 +7,7 @@ import redis
 from dotenv import load_dotenv
 from supabase import create_client
 
-from evolution_api import enviar_mensagem_whatsapp, obter_numero_corretor
+from backend.evolution_api import enviar_mensagem_whatsapp, obter_numero_corretor
 
 load_dotenv()
 
