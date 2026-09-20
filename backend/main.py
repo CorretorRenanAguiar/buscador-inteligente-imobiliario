@@ -53,7 +53,10 @@ async def chat(request: ChatRequest):
             request.session_id,
             request.tenant_id,
         )
-        return resposta
+        return JSONResponse(
+            content=resposta,
+            media_type="application/json; charset=utf-8",
+        )
     except Exception:
         logger.exception("Erro ao processar /chat")
         return JSONResponse(
