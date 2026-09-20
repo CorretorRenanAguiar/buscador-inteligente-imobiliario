@@ -18,8 +18,8 @@ EVOLUTION_API_KEY = os.getenv("EVOLUTION_API_KEY", "")
 
 DEFAULT_TENANT_ID = os.getenv(
     "DEFAULT_TENANT_ID",
-    "desenvolvimento",
-)
+    "RA_IMOBILIARIA",
+).strip().upper()
 
 EVOLUTION_TIMEOUT = int(os.getenv("EVOLUTION_TIMEOUT", "15"))
 
@@ -38,10 +38,10 @@ def _mascarar_numero(numero: str) -> str:
 
 
 def _configuracao_tenant(tenant_id: Optional[str]) -> Dict[str, str]:
-    tenant = (tenant_id or DEFAULT_TENANT_ID).strip().lower()
+    tenant = (tenant_id or DEFAULT_TENANT_ID).strip().upper()
 
     tenant_env = "".join(
-        caractere.upper() if caractere.isalnum() else "_" for caractere in tenant
+        caractere if caractere.isalnum() else "_" for caractere in tenant
     )
 
     instance = os.getenv(
@@ -60,6 +60,35 @@ def _configuracao_tenant(tenant_id: Optional[str]) -> Dict[str, str]:
         "tenant_id": tenant,
         "instance": instance,
         "corretor": corretor,
+    }
+
+
+def obter_configuracao_tenant(tenant_id: Optional[str] = None) -> Dict[str, str]:
+    return _configuracao_tenant(tenant_id)
+
+
+def obter_numero_corretor(tenant_id: Optional[str] = None) -> str:
+    return obter_configuracao_tenant(tenant_id).get("corretor", "")
+
+
+def construir_requisicao_evolution(
+    mensagem: str,
+    tenant_id: Optional[str] = None,
+    destino: Optional[str] = None,
+) -> Dict[str, Any]:
+    configuracao = _configuracao_tenant(tenant_id)
+    numero = _normalizar_numero(destino or configuracao["corretor"])
+
+    return {
+        "url": f"{EVOLUTION_API_URL}/message/sendText/{configuracao['instance']}",
+        "headers": {
+            "Content-Type": "application/json",
+            "apikey": EVOLUTION_API_KEY,
+        },
+        "payload": {
+            "number": numero,
+            "text": mensagem,
+        },
     }
 
 
@@ -116,23 +145,13 @@ def enviar_mensagem_whatsapp(
             ),
         }
 
-    url = f"{EVOLUTION_API_URL}/message/sendText/{instance}"
-
-    headers = {
-        "Content-Type": "application/json",
-        "apikey": EVOLUTION_API_KEY,
-    }
-
-    payload = {
-        "number": numero,
-        "text": mensagem,
-    }
+    requisicao = construir_requisicao_evolution(mensagem, tenant_id, numero)
 
     try:
         response = requests.post(
-            url,
-            headers=headers,
-            json=payload,
+            requisicao["url"],
+            headers=requisicao["headers"],
+            json=requisicao["payload"],
             timeout=EVOLUTION_TIMEOUT,
         )
 

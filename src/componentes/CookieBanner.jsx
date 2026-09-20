@@ -11,9 +11,7 @@ function CookieBanner() {
 
     <>
 
-      {/* =========================================
-          BANNER DE COOKIES
-      ========================================= */}
+      {/* Banner de cookies */}
 
       <div
         style={{
@@ -61,10 +59,11 @@ function CookieBanner() {
         >
           Utilizamos cookies e tecnologias de rastreamento
           para personalizar recomendações imobiliárias,
-          aprimorar algoritmos de Inteligência Artificial
-          (IA) e Machine Learning (ML) e melhorar a
-          experiência do usuário, conforme diretrizes
-          da Lei Geral de Proteção de Dados (LGPD).
+          melhorar a experiência do usuário e apoiar a
+          análise estatística do projeto acadêmico, em
+          conformidade com a Lei Geral de Proteção de
+          Dados (LGPD). Projeto aprovado pelo Comitê de
+          Ética em Pesquisa (CEPH) do IF Sudeste MG.
         </p>
 
 
@@ -161,9 +160,7 @@ function CookieBanner() {
 
 
 
-      {/* =========================================
-          MODAL DA POLÍTICA
-      ========================================= */}
+      {/* Modal da política */}
 
       {
         showPolicy && (
@@ -244,9 +241,8 @@ function CookieBanner() {
                 identificadores de sessão e tecnologias
                 de rastreamento com o objetivo de melhorar
                 a experiência do usuário, personalizar
-                recomendações imobiliárias e aprimorar os
-                algoritmos de Inteligência Artificial (IA)
-                e Machine Learning (ML) aplicados ao sistema.
+                recomendações imobiliárias e apoiar a
+                análise estatística do projeto acadêmico.
               </p>
 
 
@@ -275,10 +271,10 @@ function CookieBanner() {
                 }}
               >
                 A pesquisa possui como foco a aplicação
-                de Inteligência Artificial (AI),
-                Machine Learning (ML), análise de dados,
-                automação e segmentação inteligente
-                de leads no mercado imobiliário.
+                de Inteligência Artificial (IA), análise de
+                dados, automação e segmentação inteligente
+                de leads no mercado imobiliário, com
+                objetivo acadêmico e tecnológico.
               </p>
 
 
@@ -440,10 +436,6 @@ function CookieBanner() {
 
                 <li>
                   Aprimoramento dos algoritmos de IA;
-                </li>
-
-                <li>
-                  Treinamento de modelos de Machine Learning;
                 </li>
 
                 <li>

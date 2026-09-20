@@ -14,9 +14,8 @@ export default function ChatBot() {
         Date.now().toString()
     )
 
-    // =====================================
     // AUTO SCROLL
-    // =====================================
+
 
     useEffect(() => {
 
@@ -29,9 +28,9 @@ export default function ChatBot() {
 
     }, [mensagens])
 
-    // =====================================
+
     // ENVIAR MENSAGEM
-    // =====================================
+
 
     async function enviarMensagem(texto) {
 
@@ -54,31 +53,35 @@ export default function ChatBot() {
 
         try {
 
-            const resposta = await fetch(
-  "https://buscador-inteligente-imobiliario-production-b5a8.up.railway.app/chat",
+            const apiBaseUrl = (
+                import.meta.env.VITE_API_URL ||
+                "https://buscador-inteligente-imobiliario-production-b5a8.up.railway.app"
+            ).replace(/\/$/, "")
 
-                {
+            const resposta = await fetch(`${apiBaseUrl}/chat`, {
 
-                    method: "POST",
+                method: "POST",
 
-                    headers: {
+                headers: {
 
-                        "Content-Type":
-                            "application/json"
+                    "Content-Type": "application/json; charset=utf-8"
 
-                    },
+                },
 
-                    body: JSON.stringify({
+                body: JSON.stringify({
 
-                        mensagem: texto,
+                    mensagem: texto,
 
-                        session_id: sessao
+                    session_id: sessao
 
-                    })
+                })
 
-                }
+            })
 
-            )
+            if (!resposta.ok) {
+                const textoErro = await resposta.text()
+                throw new Error(textoErro || "Erro ao processar a mensagem.")
+            }
 
             const dados = await resposta.json()
 
@@ -125,9 +128,9 @@ export default function ChatBot() {
 
     }
 
-    // =====================================
+
     // ABRIR CHAT
-    // =====================================
+
 
     function abrirChat() {
 
@@ -145,9 +148,9 @@ export default function ChatBot() {
 
         <>
 
-            {/* ================================= */}
+
             {/* BOTÃO FLUTUANTE */}
-            {/* ================================= */}
+
 
             {
 
@@ -198,9 +201,9 @@ export default function ChatBot() {
 
             }
 
-            {/* ================================= */}
+
             {/* CHAT */}
-            {/* ================================= */}
+
 
             {
 
@@ -376,8 +379,8 @@ export default function ChatBot() {
 
                                                 alignItems:
                                                     msg.autor === "bot"
-                                                    ? "flex-start"
-                                                    : "flex-end"
+                                                        ? "flex-start"
+                                                        : "flex-end"
 
                                             }}
 
@@ -391,13 +394,13 @@ export default function ChatBot() {
 
                                                     background:
                                                         msg.autor === "bot"
-                                                        ? "#fff"
-                                                        : "#d4a017",
+                                                            ? "#fff"
+                                                            : "#d4a017",
 
                                                     color:
                                                         msg.autor === "bot"
-                                                        ? "#000"
-                                                        : "#fff",
+                                                            ? "#000"
+                                                            : "#fff",
 
                                                     padding: "12px",
 
