@@ -597,7 +597,7 @@ async def processar_chatbot(mensagem, session_id, tenant_id="RA_IMOBILIARIA"):
 
         relatorio = f"""
 
-NOVO LEAD IMOBILIARIO
+NOVO LEAD IMOBILIÁRIO
 
 Perfil:
 {perfil}
@@ -605,34 +605,34 @@ Perfil:
 Objetivo:
 {sessao.get("objetivo")}
 
-Tipo imovel:
+Tipo de imóvel:
 {sessao.get("tipo_imovel")}
 
 Quartos:
-{sessao.get("quartos", "Nao informado")}
+{sessao.get("quartos", "Não informado")}
 
 Mobiliado:
-{sessao.get("mobiliado", "Nao informado")}
+{sessao.get("mobiliado", "Não informado")}
 
 Objetivo rural:
-{sessao.get("objetivo_rural", "Nao informado")}
+{sessao.get("objetivo_rural", "Não informado")}
 
-Area/Hectares:
-{sessao.get("hectares", "Nao informado")}
+Área/Hectares:
+{sessao.get("hectares", "Não informado")}
 
-Localizacao:
+Localização:
 {sessao.get("localizacao")}
 
-Faixa valor:
+Faixa de valor:
 {sessao.get("faixa_valor")}
 
 Permuta:
-{"Sim" if sessao.get("permuta") else "Nao"}
+{"Sim" if sessao.get("permuta") else "Não"}
 
-WhatsApp cliente:
+WhatsApp do cliente:
 {whatsapp}
 
-Score Lead:
+Score do lead:
 {score}
 """
 
@@ -644,16 +644,16 @@ Score Lead:
 
         if enviado:
             return {
-                "mensagem": "Atendimento concluido com sucesso!\n\n"
-                "Nossa equipe ja recebeu suas informacoes.\n\n"
-                "Em breve um corretor entrara em contato.",
+                "mensagem": "Atendimento concluído com sucesso!\n\n"
+                "Nossa equipe já recebeu suas informações.\n\n"
+                "Em breve um corretor entrará em contato.",
                 "link_whatsapp": f"https://wa.me/{numero_corretor}",
             }
 
         return {
-            "mensagem": "O atendimento foi concluido, porem ocorreu uma falha no envio automatico.\n\n"
-            "Por favor, clique no botao abaixo para falar diretamente com o corretor.",
+            "mensagem": "O atendimento foi concluído, porém ocorreu uma falha no envio automático.\n\n"
+            "Por favor, clique no botão abaixo para falar diretamente com o corretor.",
             "link_whatsapp": f"https://wa.me/{numero_corretor}",
         }
 
-    return {"mensagem": "Desculpe, nao consegui entender.\n\nTente novamente."}
+    return {"mensagem": "Desculpe, não consegui entender.\n\nTente novamente."}
