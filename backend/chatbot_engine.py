@@ -118,7 +118,39 @@ LOCALIZACOES_INVALIDAS = [
     "nada",
 ]
 
+TIPOS_RURAIS = {"granja", "fazenda", "sítio", "sitio", "chácara", "chacara"}
+TIPOS_LOCACAO_RESIDENCIAL = ["Casa", "Apartamento", "Kitnet", "Cobertura"]
+TIPOS_LOCACAO_COMERCIAL = [
+    "Loja",
+    "Sala comercial",
+    "Galpão",
+    "Casa comercial",
+    "Terreno",
+    "Imóvel comercial",
+]
+MODALIDADES_GARANTIA_LOCATICA = [
+    "Caução",
+    "Seguro-fiança",
+    "Cartão de crédito",
+    "Fiador",
+]
+
+
 # Validação da localização
+
+
+def _objetivo_eh_locacao(objetivo: str) -> bool:
+    return "alugar" in (objetivo or "").lower()
+
+
+def _tipo_eh_rural(tipo_imovel: str) -> bool:
+    return (tipo_imovel or "").lower() in TIPOS_RURAIS
+
+
+def _finalidade_locacao_normalizada(valor: str) -> str:
+    if "comercial" in (valor or "").lower():
+        return "Comercial"
+    return "Residencial"
 
 
 def validar_localizacao(texto):
@@ -254,8 +286,13 @@ def salvar_lead_supabase(dados):
             "observacoes": str(
                 {
                     "perfil": classificar_perfil(dados),
+                    "uso_imovel": dados.get("uso_imovel"),
+                    "primeiro_imovel": dados.get("primeiro_imovel"),
                     "objetivo_rural": dados.get("objetivo_rural"),
                     "hectares": dados.get("hectares"),
+                    "finalidade_locacao": dados.get("finalidade_locacao"),
+                    "garantia_locatica": dados.get("garantia_locatica"),
+                    "caracteristicas_comercial": dados.get("caracteristicas_comercial"),
                     "mobiliado": dados.get("mobiliado"),
                     "permuta": dados.get("permuta"),
                 }
@@ -310,6 +347,8 @@ async def processar_chatbot(mensagem, session_id, tenant_id="RA_IMOBILIARIA"):
 
     sessao["tenant_id"] = tenant_id
     etapa = sessao.get("etapa", "objetivo")
+    objetivo = sessao.get("objetivo", "")
+    eh_locacao = _objetivo_eh_locacao(objetivo)
 
     if detectar_permuta(mensagem):
         sessao["permuta"] = True
@@ -324,22 +363,17 @@ async def processar_chatbot(mensagem, session_id, tenant_id="RA_IMOBILIARIA"):
 
     if etapa == "objetivo":
         sessao["objetivo"] = mensagem
-        sessao["etapa"] = "tipo_imovel"
-        _salvar_sessao(sessao, session_id, tenant_id)
 
-        if "alugar" in mensagem.lower():
+        if _objetivo_eh_locacao(mensagem):
+            sessao["etapa"] = "finalidade_locacao"
+            _salvar_sessao(sessao, session_id, tenant_id)
             return {
-                "mensagem": "Perfeito 😊\n\nQual tipo de imóvel você procura?",
-                "opcoes": [
-                    "Casa",
-                    "Apartamento",
-                    "Kitnet",
-                    "Cobertura",
-                    "Terreno",
-                    "Imóvel comercial",
-                ],
+                "mensagem": "Perfeito 😊\n\nVocê procura um imóvel para locação residencial ou comercial?",
+                "opcoes": ["Residencial", "Comercial"],
             }
 
+        sessao["etapa"] = "tipo_imovel"
+        _salvar_sessao(sessao, session_id, tenant_id)
         return {
             "mensagem": "Perfeito 😊\n\nQual tipo de imóvel você procura?",
             "opcoes": [
@@ -357,11 +391,50 @@ async def processar_chatbot(mensagem, session_id, tenant_id="RA_IMOBILIARIA"):
             ],
         }
 
+    if etapa == "finalidade_locacao":
+        finalidade_locacao = _finalidade_locacao_normalizada(mensagem)
+        sessao["finalidade_locacao"] = finalidade_locacao
+        sessao["etapa"] = "tipo_imovel"
+        _salvar_sessao(sessao, session_id, tenant_id)
+
+        if finalidade_locacao == "Comercial":
+            return {
+                "mensagem": "Ótimo.\n\nQual tipo de imóvel comercial você procura?",
+                "opcoes": TIPOS_LOCACAO_COMERCIAL,
+            }
+
+        return {
+            "mensagem": "Ótimo.\n\nQual tipo de imóvel residencial você procura?",
+            "opcoes": TIPOS_LOCACAO_RESIDENCIAL,
+        }
+
     if etapa == "tipo_imovel":
         sessao["tipo_imovel"] = mensagem
         tipo = mensagem.lower()
 
-        if tipo in ["granja", "fazenda", "sítio", "sitio", "chácara", "chacara"]:
+        if eh_locacao:
+            if sessao.get("finalidade_locacao") == "Comercial":
+                sessao["etapa"] = "caracteristicas_comercial"
+                _salvar_sessao(sessao, session_id, tenant_id)
+                return {
+                    "mensagem": "Perfeito.\n\nQuais características são essenciais no imóvel comercial?",
+                    "opcoes": [
+                        "Loja de rua/vitrine",
+                        "Recepção e salas",
+                        "Espaço para estoque",
+                        "Pé-direito alto",
+                        "Não tenho preferência",
+                    ],
+                }
+
+            sessao["etapa"] = "quartos"
+            _salvar_sessao(sessao, session_id, tenant_id)
+            return {
+                "mensagem": "Perfeito.\n\nQuantos quartos você deseja?",
+                "opcoes": ["1 quarto", "2 quartos", "3 quartos", "4 quartos ou mais"],
+            }
+
+        if _tipo_eh_rural(tipo):
             sessao["etapa"] = "objetivo_rural"
             _salvar_sessao(sessao, session_id, tenant_id)
             return {
@@ -386,6 +459,15 @@ async def processar_chatbot(mensagem, session_id, tenant_id="RA_IMOBILIARIA"):
         return {
             "mensagem": "Qual será o principal uso do imóvel?",
             "opcoes": ["Moradia", "Comercial", "Investimento"],
+        }
+
+    if etapa == "caracteristicas_comercial":
+        sessao["caracteristicas_comercial"] = mensagem
+        sessao["etapa"] = "localizacao"
+        _salvar_sessao(sessao, session_id, tenant_id)
+        return {
+            "mensagem": "Excelente.\n\nQual localização deseja para o imóvel?",
+            "opcoes": [],
         }
 
     if etapa == "uso_imovel":
@@ -440,14 +522,6 @@ async def processar_chatbot(mensagem, session_id, tenant_id="RA_IMOBILIARIA"):
 
     if etapa == "quartos":
         sessao["quartos"] = mensagem
-        if "alugar" in sessao["objetivo"].lower():
-            sessao["etapa"] = "mobiliado"
-            _salvar_sessao(sessao, session_id, tenant_id)
-            return {
-                "mensagem": "Perfeito.\n\nVocê procura imóvel:",
-                "opcoes": ["Mobiliado", "Semimobiliado", "Não importa"],
-            }
-
         sessao["etapa"] = "banheiros"
         _salvar_sessao(sessao, session_id, tenant_id)
         return {
@@ -475,7 +549,7 @@ async def processar_chatbot(mensagem, session_id, tenant_id="RA_IMOBILIARIA"):
 
     if etapa == "aceita_pet":
         sessao["aceita_pet"] = mensagem
-        if "alugar" in sessao["objetivo"].lower():
+        if eh_locacao:
             sessao["etapa"] = "mobiliado"
             _salvar_sessao(sessao, session_id, tenant_id)
             return {
@@ -511,7 +585,7 @@ async def processar_chatbot(mensagem, session_id, tenant_id="RA_IMOBILIARIA"):
         sessao["etapa"] = "faixa_valor"
         _salvar_sessao(sessao, session_id, tenant_id)
 
-        if "alugar" in sessao["objetivo"].lower():
+        if eh_locacao:
             return {
                 "mensagem": "Ótimo.\n\nQual faixa de aluguel você procura?",
                 "opcoes": [
@@ -538,6 +612,22 @@ async def processar_chatbot(mensagem, session_id, tenant_id="RA_IMOBILIARIA"):
         sessao["faixa_valor"] = mensagem
         sessao["etapa"] = "momento_compra"
         _salvar_sessao(sessao, session_id, tenant_id)
+
+        if eh_locacao:
+            pergunta_momento = "Em quanto tempo pretende ocupar o imóvel?"
+            if sessao.get("finalidade_locacao") == "Residencial":
+                pergunta_momento = "Em quanto tempo pretende se mudar?"
+
+            return {
+                "mensagem": pergunta_momento,
+                "opcoes": [
+                    "Imediatamente",
+                    "Até 3 meses",
+                    "Até 6 meses",
+                    "Acima de 6 meses",
+                ],
+            }
+
         return {
             "mensagem": "Em quanto tempo pretende comprar o imóvel?",
             "opcoes": [
@@ -550,6 +640,15 @@ async def processar_chatbot(mensagem, session_id, tenant_id="RA_IMOBILIARIA"):
 
     if etapa == "momento_compra":
         sessao["momento_compra"] = mensagem
+
+        if eh_locacao:
+            sessao["etapa"] = "garantia_locatica"
+            _salvar_sessao(sessao, session_id, tenant_id)
+            return {
+                "mensagem": "Qual modalidade de garantia locatícia você pretende usar?",
+                "opcoes": MODALIDADES_GARANTIA_LOCATICA,
+            }
+
         sessao["etapa"] = "financiamento"
         _salvar_sessao(sessao, session_id, tenant_id)
         return {
@@ -557,8 +656,31 @@ async def processar_chatbot(mensagem, session_id, tenant_id="RA_IMOBILIARIA"):
             "opcoes": ["Sim", "Não"],
         }
 
+    if etapa == "garantia_locatica":
+        sessao["garantia_locatica"] = mensagem
+        sessao["etapa"] = "whatsapp"
+        _salvar_sessao(sessao, session_id, tenant_id)
+        return {
+            "mensagem": "Perfeito.\n\nInforme seu WhatsApp com DDD para continuar.",
+            "opcoes": [],
+        }
+
     if etapa == "financiamento":
         sessao["financiamento"] = mensagem
+
+        if _tipo_eh_rural(sessao.get("tipo_imovel")):
+            sessao["etapa"] = "renda_familiar"
+            _salvar_sessao(sessao, session_id, tenant_id)
+            return {
+                "mensagem": "Qual sua renda familiar aproximada?",
+                "opcoes": [
+                    "Até R$ 2 mil",
+                    "R$ 2 mil a R$ 4 mil",
+                    "R$ 4 mil a R$ 8 mil",
+                    "Acima de R$ 8 mil",
+                ],
+            }
+
         sessao["etapa"] = "fgts"
         _salvar_sessao(sessao, session_id, tenant_id)
         return {
@@ -595,46 +717,109 @@ async def processar_chatbot(mensagem, session_id, tenant_id="RA_IMOBILIARIA"):
         perfil = classificar_perfil(sessao)
         score = calcular_score(sessao)
 
-        relatorio = f"""
+        linhas_relatorio = [
+            "",
+            "NOVO LEAD IMOBILIÁRIO",
+            "",
+            "Perfil:",
+            str(perfil),
+            "",
+            "Objetivo:",
+            str(sessao.get("objetivo", "Não informado")),
+            "",
+        ]
 
-NOVO LEAD IMOBILIÁRIO
+        if eh_locacao:
+            linhas_relatorio.extend(
+                [
+                    "Finalidade da locação:",
+                    str(sessao.get("finalidade_locacao", "Não informado")),
+                    "",
+                ]
+            )
 
-Perfil:
-{perfil}
+        linhas_relatorio.extend(
+            [
+                "Tipo de imóvel:",
+                str(sessao.get("tipo_imovel", "Não informado")),
+                "",
+            ]
+        )
 
-Objetivo:
-{sessao.get("objetivo")}
+        if sessao.get("quartos"):
+            linhas_relatorio.extend(["Quartos:", str(sessao.get("quartos")), ""])
+        if sessao.get("banheiros"):
+            linhas_relatorio.extend(["Banheiros:", str(sessao.get("banheiros")), ""])
+        if sessao.get("vagas_garagem"):
+            linhas_relatorio.extend(["Vagas de garagem:", str(sessao.get("vagas_garagem")), ""])
+        if sessao.get("aceita_pet"):
+            linhas_relatorio.extend(["Aceita pet:", str(sessao.get("aceita_pet")), ""])
+        if sessao.get("mobiliado"):
+            linhas_relatorio.extend(["Mobiliado:", str(sessao.get("mobiliado")), ""])
+        if sessao.get("caracteristicas_comercial"):
+            linhas_relatorio.extend(
+                [
+                    "Características comerciais:",
+                    str(sessao.get("caracteristicas_comercial")),
+                    "",
+                ]
+            )
+        if sessao.get("objetivo_rural"):
+            linhas_relatorio.extend(
+                ["Objetivo rural:", str(sessao.get("objetivo_rural")), ""]
+            )
+        if sessao.get("hectares"):
+            linhas_relatorio.extend(["Área/Hectares:", str(sessao.get("hectares")), ""])
 
-Tipo de imóvel:
-{sessao.get("tipo_imovel")}
+        linhas_relatorio.extend(
+            [
+                "Localização:",
+                str(sessao.get("localizacao", "Não informado")),
+                "",
+                "Faixa de valor:",
+                str(sessao.get("faixa_valor", "Não informado")),
+                "",
+                "Momento:",
+                str(sessao.get("momento_compra", "Não informado")),
+                "",
+            ]
+        )
 
-Quartos:
-{sessao.get("quartos", "Não informado")}
+        if eh_locacao:
+            if sessao.get("garantia_locatica"):
+                linhas_relatorio.extend(
+                    [
+                        "Garantia locatícia:",
+                        str(sessao.get("garantia_locatica")),
+                        "",
+                    ]
+                )
+        else:
+            if sessao.get("financiamento"):
+                linhas_relatorio.extend(
+                    ["Financiamento:", str(sessao.get("financiamento")), ""]
+                )
+            if sessao.get("fgts"):
+                linhas_relatorio.extend(["FGTS:", str(sessao.get("fgts")), ""])
+            if sessao.get("renda_familiar"):
+                linhas_relatorio.extend(
+                    ["Renda familiar:", str(sessao.get("renda_familiar")), ""]
+                )
 
-Mobiliado:
-{sessao.get("mobiliado", "Não informado")}
+        linhas_relatorio.extend(
+            [
+                "Permuta:",
+                "Sim" if sessao.get("permuta") else "Não",
+                "",
+                "WhatsApp do cliente:",
+                whatsapp,
+                "",
+                "Score do lead:",
+                str(score),
+            ]
+        )
 
-Objetivo rural:
-{sessao.get("objetivo_rural", "Não informado")}
-
-Área/Hectares:
-{sessao.get("hectares", "Não informado")}
-
-Localização:
-{sessao.get("localizacao")}
-
-Faixa de valor:
-{sessao.get("faixa_valor")}
-
-Permuta:
-{"Sim" if sessao.get("permuta") else "Não"}
-
-WhatsApp do cliente:
-{whatsapp}
-
-Score do lead:
-{score}
-"""
+        relatorio = "\n".join(linhas_relatorio)
 
         salvar_lead_supabase(sessao)
         enviado = enviar_whatsapp(relatorio, tenant_id)
