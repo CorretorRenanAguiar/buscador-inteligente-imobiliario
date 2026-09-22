@@ -751,7 +751,9 @@ async def processar_chatbot(mensagem, session_id, tenant_id="RA_IMOBILIARIA"):
         if sessao.get("banheiros"):
             linhas_relatorio.extend(["Banheiros:", str(sessao.get("banheiros")), ""])
         if sessao.get("vagas_garagem"):
-            linhas_relatorio.extend(["Vagas de garagem:", str(sessao.get("vagas_garagem")), ""])
+            linhas_relatorio.extend(
+                ["Vagas de garagem:", str(sessao.get("vagas_garagem")), ""]
+            )
         if sessao.get("aceita_pet"):
             linhas_relatorio.extend(["Aceita pet:", str(sessao.get("aceita_pet")), ""])
         if sessao.get("mobiliado"):
