@@ -426,64 +426,254 @@ def _extrair_numero(texto):
     return 0
 
 
+def _normalizar_telefone(telefone: Any) -> str:
+    numero = re.sub(r"\D", "", str(telefone or ""))
+    if numero.startswith("55") and len(numero) in {12, 13}:
+        return numero[2:]
+    return numero
+
+
+def _telefone_valido(telefone: str) -> bool:
+    return len(_normalizar_telefone(telefone)) >= 10
+
+
+def _classificacao_legada(dados: Dict[str, Any]) -> str:
+    score = calcular_score(dados)
+
+    if score >= 8:
+        return "quente"
+    if score >= 4:
+        return "morno"
+    return "frio"
+
+
+def _construir_payload_lead(dados: Dict[str, Any]) -> Dict[str, Any]:
+    payload = {
+        "telefone": dados.get("whatsapp"),
+        "bairro": dados.get("localizacao"),
+        "bairro_interesse": dados.get("localizacao"),
+        "faixa_preco_interesse": dados.get("faixa_valor"),
+        "tipo_interesse": dados.get("objetivo"),
+        "tipo_imovel": dados.get("tipo_imovel"),
+        "objetivo": dados.get("objetivo"),
+        "quartos": _extrair_numero(dados.get("quartos")),
+        "banheiros": _extrair_numero(dados.get("banheiros")),
+        "vagas_garagem": _extrair_numero(dados.get("vagas_garagem")),
+        "aceita_pet": dados.get("aceita_pet"),
+        "momento_compra": dados.get("momento_compra"),
+        "financiamento": dados.get("financiamento"),
+        "fgts": dados.get("fgts"),
+        "renda_familiar": dados.get("renda_familiar"),
+        "origem_lead": "chatbot",
+        "score_lead": calcular_score(dados),
+        "classificacao_lead": _classificacao_legada(dados),
+        "observacoes": str(
+            {
+                "perfil": classificar_perfil(dados),
+                "uso_imovel": dados.get("uso_imovel"),
+                "primeiro_imovel": dados.get("primeiro_imovel"),
+                "objetivo_rural": dados.get("objetivo_rural"),
+                "hectares": dados.get("hectares"),
+                "finalidade_locacao": dados.get("finalidade_locacao"),
+                "garantia_locatica": dados.get("garantia_locatica"),
+                "caracteristicas_comercial": dados.get("caracteristicas_comercial"),
+                "mobiliado": dados.get("mobiliado"),
+                "permuta": dados.get("permuta"),
+            }
+        ),
+    }
+
+    if _campo_informado(dados, "session_id"):
+        payload["sessao_id"] = dados["session_id"]
+
+    return payload
+
+
 def salvar_lead_supabase(dados):
     try:
-        score = calcular_score(dados)
-        classificacao = "frio"
+        payload = _construir_payload_lead(dados)
+        supabase.table("leads").insert(payload).execute()
+        logger.info("Lead salvo no Supabase pelo fluxo legado.")
+        return True
+    except Exception as erro:
+        logger.exception("Erro ao salvar lead no Supabase: %s", erro)
+        return False
 
-        if score >= 8:
-            classificacao = "quente"
-        elif score >= 4:
-            classificacao = "morno"
 
-        payload = {
-            "telefone": dados.get("whatsapp"),
-            "bairro": dados.get("localizacao"),
-            "bairro_interesse": dados.get("localizacao"),
-            "faixa_preco_interesse": dados.get("faixa_valor"),
-            "tipo_interesse": dados.get("objetivo"),
-            "tipo_imovel": dados.get("tipo_imovel"),
-            "objetivo": dados.get("objetivo"),
-            "quartos": _extrair_numero(dados.get("quartos")),
-            "banheiros": _extrair_numero(dados.get("banheiros")),
-            "vagas_garagem": _extrair_numero(dados.get("vagas_garagem")),
-            "aceita_pet": dados.get("aceita_pet"),
-            "momento_compra": dados.get("momento_compra"),
-            "financiamento": dados.get("financiamento"),
-            "fgts": dados.get("fgts"),
-            "renda_familiar": dados.get("renda_familiar"),
-            "origem_lead": "chatbot",
-            "score_lead": score,
-            "classificacao_lead": classificacao,
-            "observacoes": str(
-                {
-                    "perfil": classificar_perfil(dados),
-                    "uso_imovel": dados.get("uso_imovel"),
-                    "primeiro_imovel": dados.get("primeiro_imovel"),
-                    "objetivo_rural": dados.get("objetivo_rural"),
-                    "hectares": dados.get("hectares"),
-                    "finalidade_locacao": dados.get("finalidade_locacao"),
-                    "garantia_locatica": dados.get("garantia_locatica"),
-                    "caracteristicas_comercial": dados.get("caracteristicas_comercial"),
-                    "mobiliado": dados.get("mobiliado"),
-                    "permuta": dados.get("permuta"),
-                }
-            ),
+def buscar_lead_por_telefone(telefone: str) -> Optional[Dict[str, Any]]:
+    telefone_normalizado = _normalizar_telefone(telefone)
+    if not _telefone_valido(telefone_normalizado):
+        return None
+
+    try:
+        resposta = (
+            supabase.table("leads")
+            .select("*")
+            .order("criado_em", desc=True)
+            .execute()
+        )
+        registros = resposta.data or []
+
+        for registro in registros:
+            if _normalizar_telefone(registro.get("telefone")) == telefone_normalizado:
+                return registro
+    except Exception as erro:
+        logger.exception("Erro ao buscar lead por telefone: %s", erro)
+
+    return None
+
+
+def salvar_interacao_lead(
+    lead_id: Optional[int],
+    telefone: str,
+    session_id: str,
+    sessao: Dict[str, Any],
+    qualificacao: Dict[str, Any],
+) -> Dict[str, Any]:
+    payload = {
+        "lead_id": lead_id,
+        "telefone": _normalizar_telefone(telefone),
+        "sessao_id": session_id,
+        "tipo_interacao": "chatbot",
+        "dados_interacao": sessao,
+        "qualificacao": qualificacao,
+    }
+
+    try:
+        resposta = supabase.table("interacoes_lead").insert(payload).execute()
+        registro = (resposta.data or [{}])[0]
+        return {
+            "sucesso": True,
+            "interacao_id": registro.get("id"),
+        }
+    except Exception as erro:
+        logger.exception("Erro ao salvar interação do lead: %s", erro)
+        return {
+            "sucesso": False,
+            "interacao_id": None,
+            "erro": str(erro),
         }
 
-        resposta = supabase.table("leads").insert(payload).execute()
-        print("====================================")
-        print("LEAD SALVO SUPABASE")
-        print(resposta)
-        print("====================================")
-        return True
 
+def _atualizar_lead_recorrente(
+    lead: Dict[str, Any],
+    sessao: Dict[str, Any],
+    session_id: str,
+) -> bool:
+    dados = dict(sessao)
+    dados["session_id"] = session_id
+    payload_completo = _construir_payload_lead(dados)
+    campos_atualizaveis = {
+        "telefone",
+        "bairro",
+        "bairro_interesse",
+        "faixa_preco_interesse",
+        "tipo_interesse",
+        "tipo_imovel",
+        "objetivo",
+        "quartos",
+        "banheiros",
+        "vagas_garagem",
+        "aceita_pet",
+        "momento_compra",
+        "financiamento",
+        "fgts",
+        "renda_familiar",
+        "score_lead",
+        "classificacao_lead",
+        "observacoes",
+        "sessao_id",
+    }
+    payload = {}
+
+    for campo in campos_atualizaveis:
+        valor = payload_completo.get(campo)
+        origem = sessao.get(campo)
+        if campo == "telefone":
+            origem = sessao.get("whatsapp")
+        elif campo in {"bairro", "bairro_interesse"}:
+            origem = sessao.get("localizacao")
+        elif campo == "faixa_preco_interesse":
+            origem = sessao.get("faixa_valor")
+        elif campo == "tipo_interesse":
+            origem = sessao.get("objetivo")
+        elif campo == "vagas_garagem":
+            origem = sessao.get("vagas_garagem")
+        elif campo == "sessao_id":
+            origem = session_id
+
+        if campo in {"quartos", "banheiros", "vagas_garagem"}:
+            informado = _campo_informado(sessao, campo)
+        else:
+            informado = origem is not None and str(origem).strip() != ""
+
+        if informado:
+            payload[campo] = valor
+
+    try:
+        supabase.table("leads").update(payload).eq("id", lead.get("id")).execute()
+        return True
     except Exception as erro:
-        print("====================================")
-        print("ERRO SUPABASE")
-        print(str(erro))
-        print("====================================")
+        logger.exception("Erro ao atualizar lead recorrente: %s", erro)
         return False
+
+
+def persistir_lead_e_interacao(
+    sessao: Dict[str, Any],
+    session_id: str,
+    qualificacao: Dict[str, Any],
+) -> Dict[str, Any]:
+    telefone = _normalizar_telefone(sessao.get("whatsapp"))
+
+    if not _telefone_valido(telefone):
+        sucesso = salvar_lead_supabase(sessao)
+        return {
+            "sucesso": sucesso,
+            "lead_id": None,
+            "status_contato": "novo",
+            "interacao_id": None,
+        }
+
+    lead = buscar_lead_por_telefone(telefone)
+    sessao_atual = dict(sessao)
+    sessao_atual["whatsapp"] = telefone
+    sessao_atual["session_id"] = session_id
+
+    if lead is None:
+        payload = _construir_payload_lead(sessao_atual)
+        try:
+            resposta = supabase.table("leads").insert(payload).execute()
+            registro = (resposta.data or [{}])[0]
+            lead_id = registro.get("id")
+            status_contato = "novo"
+        except Exception as erro:
+            logger.exception("Erro ao criar novo lead: %s", erro)
+            return {
+                "sucesso": False,
+                "lead_id": None,
+                "status_contato": "novo",
+                "interacao_id": None,
+                "erro": str(erro),
+            }
+    else:
+        lead_id = lead.get("id")
+        status_contato = "recorrente"
+        _atualizar_lead_recorrente(lead, sessao_atual, session_id)
+
+    interacao = salvar_interacao_lead(
+        lead_id,
+        telefone,
+        session_id,
+        sessao_atual,
+        qualificacao,
+    )
+    return {
+        "sucesso": True,
+        "lead_id": lead_id,
+        "status_contato": status_contato,
+        "interacao_id": interacao.get("interacao_id"),
+        "erro_interacao": interacao.get("erro") if not interacao.get("sucesso") else None,
+    }
 
 
 # Envio do relatório para o WhatsApp
@@ -906,10 +1096,19 @@ async def processar_chatbot(mensagem, session_id, tenant_id="RA_IMOBILIARIA"):
         pontos_atencao = _gerar_pontos_atencao(sessao, eh_locacao)
         score = qualificacao.get("score")
         fallback_qualificacao = qualificacao.get("fallback", False)
+        persistencia = persistir_lead_e_interacao(
+            sessao,
+            session_id,
+            qualificacao,
+        )
+        status_contato = persistencia.get("status_contato", "novo")
 
         linhas_relatorio = [
             "",
             "QUALIFICAÇÃO DO LEAD",
+            "",
+            "Status do contato:",
+            status_contato.upper(),
             "",
             "Perfil:",
             str(qualificacao.get("perfil_cluster", classificar_perfil(sessao))),
@@ -1056,7 +1255,6 @@ async def processar_chatbot(mensagem, session_id, tenant_id="RA_IMOBILIARIA"):
 
         relatorio = "\n".join(linhas_relatorio)
 
-        salvar_lead_supabase(sessao)
         enviado = enviar_whatsapp(relatorio, tenant_id)
         _remover_sessao(session_id, tenant_id)
 
@@ -1068,12 +1266,14 @@ async def processar_chatbot(mensagem, session_id, tenant_id="RA_IMOBILIARIA"):
                 "Nossa equipe já recebeu suas informações.\n\n"
                 "Em breve um corretor entrará em contato.",
                 "link_whatsapp": f"https://wa.me/{numero_corretor}",
+                "status_contato": status_contato,
             }
 
         return {
             "mensagem": "O atendimento foi concluído, porém ocorreu uma falha no envio automático.\n\n"
             "Por favor, clique no botão abaixo para falar diretamente com o corretor.",
             "link_whatsapp": f"https://wa.me/{numero_corretor}",
+            "status_contato": status_contato,
         }
 
     return {"mensagem": "Desculpe, não consegui entender.\n\nTente novamente."}
