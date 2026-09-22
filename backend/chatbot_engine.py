@@ -1,4 +1,5 @@
 ﻿import json
+import logging
 import os
 import re
 from typing import Any, Dict, Optional
@@ -7,9 +8,12 @@ import redis
 from dotenv import load_dotenv
 from supabase import create_client
 
+from backend.enhanced_filters_kmeans import qualificar_sessao_chatbot
 from backend.evolution_api import enviar_mensagem_whatsapp, obter_numero_corretor
 
 load_dotenv()
+
+logger = logging.getLogger(__name__)
 
 # Configuração do Supabase
 
@@ -153,6 +157,11 @@ def _finalidade_locacao_normalizada(valor: str) -> str:
     return "Residencial"
 
 
+def _eh_atendimento_corretor(mensagem: str) -> bool:
+    texto = re.sub(r"\s+", " ", (mensagem or "").lower()).strip()
+    return texto in {"sou corretor", "sou corretora"}
+
+
 def validar_localizacao(texto):
     texto = texto.strip().lower()
 
@@ -238,6 +247,169 @@ def classificar_perfil(dados):
         return "Lançamento"
 
     return "Residencial"
+
+
+def _campo_informado(dados: Dict[str, Any], campo: str) -> bool:
+    valor = dados.get(campo)
+    return valor is not None and str(valor).strip() != ""
+
+
+def _campos_relevantes_qualificacao(
+    sessao: Dict[str, Any],
+    eh_locacao: bool,
+) -> list[str]:
+    campos = [
+        "objetivo",
+        "tipo_imovel",
+        "localizacao",
+        "faixa_valor",
+        "momento_compra",
+        "whatsapp",
+    ]
+
+    if eh_locacao:
+        campos.extend(["finalidade_locacao", "garantia_locatica"])
+    elif _tipo_eh_rural(sessao.get("tipo_imovel")):
+        campos.extend(["objetivo_rural", "hectares", "renda_familiar"])
+    else:
+        campos.extend(
+            [
+                "uso_imovel",
+                "primeiro_imovel",
+                "quartos",
+                "banheiros",
+                "vagas_garagem",
+                "aceita_pet",
+                "financiamento",
+                "fgts",
+                "renda_familiar",
+            ]
+        )
+
+    return campos
+
+
+def _calcular_completude_qualificacao(
+    sessao: Dict[str, Any],
+    eh_locacao: bool,
+) -> str:
+    campos = _campos_relevantes_qualificacao(sessao, eh_locacao)
+    preenchidos = sum(_campo_informado(sessao, campo) for campo in campos)
+    percentual = preenchidos / len(campos)
+
+    if percentual >= 0.8:
+        return "ALTA"
+    if percentual >= 0.5:
+        return "MÉDIA"
+    return "BAIXA"
+
+
+def _gerar_sinais_positivos(
+    sessao: Dict[str, Any],
+    eh_locacao: bool,
+) -> list[str]:
+    sinais = []
+    campos = [
+        ("objetivo", "Intenção definida"),
+        ("tipo_imovel", "Tipo de imóvel definido"),
+        ("localizacao", "Localização definida"),
+        ("faixa_valor", "Faixa de valor definida"),
+        ("momento_compra", "Prazo definido"),
+        ("whatsapp", "WhatsApp informado"),
+    ]
+
+    if eh_locacao:
+        campos.extend(
+            [
+                ("finalidade_locacao", "Finalidade da locação definida"),
+                ("garantia_locatica", "Garantia locatícia informada"),
+            ]
+        )
+    elif _tipo_eh_rural(sessao.get("tipo_imovel")):
+        campos.extend(
+            [
+                ("objetivo_rural", "Finalidade rural definida"),
+                ("hectares", "Área rural informada"),
+            ]
+        )
+    else:
+        campos.extend(
+            [
+                ("quartos", "Quartos informados"),
+                ("banheiros", "Banheiros informados"),
+                ("vagas_garagem", "Vagas informadas"),
+                ("renda_familiar", "Renda familiar informada"),
+            ]
+        )
+
+    for campo, descricao in campos:
+        if _campo_informado(sessao, campo):
+            sinais.append(descricao)
+
+    return sinais
+
+
+def _gerar_pontos_atencao(
+    sessao: Dict[str, Any],
+    eh_locacao: bool,
+) -> list[str]:
+    pontos = []
+
+    for campo, descricao in (
+        ("localizacao", "Localização não informada"),
+        ("faixa_valor", "Faixa de valor não informada"),
+        ("momento_compra", "Prazo não informado"),
+    ):
+        if not _campo_informado(sessao, campo):
+            pontos.append(descricao)
+
+    if not _campo_informado(sessao, "renda_familiar"):
+        pontos.append(
+            "Renda não declarada; isso representa informação incompleta, "
+            "não reprovação."
+        )
+    else:
+        pontos.append("Capacidade financeira não validada.")
+
+    if eh_locacao:
+        if not _campo_informado(sessao, "garantia_locatica"):
+            pontos.append("Garantia locatícia não informada.")
+    elif not _tipo_eh_rural(sessao.get("tipo_imovel")):
+        if not _campo_informado(sessao, "financiamento"):
+            pontos.append("Financiamento não informado.")
+        if not _campo_informado(sessao, "fgts"):
+            pontos.append("FGTS não informado.")
+
+    return pontos
+
+
+def _qualificar_para_relatorio(
+    sessao: Dict[str, Any],
+    eh_locacao: bool,
+) -> Dict[str, Any]:
+    score_legado = calcular_score(sessao)
+
+    try:
+        qualificacao = qualificar_sessao_chatbot(sessao)
+        if not isinstance(qualificacao, dict):
+            raise TypeError("A qualificação retornou um formato inválido.")
+
+        qualificacao["fallback"] = False
+        qualificacao["score"] = qualificacao.get("score", score_legado)
+        return qualificacao
+    except Exception:
+        logger.exception(
+            "Falha na qualificação avançada; usando score antigo como fallback."
+        )
+        return {
+            "fallback": True,
+            "score": score_legado,
+            "perfil_cluster": classificar_perfil(sessao),
+            "intencao_compra": "NÃO CLASSIFICADA",
+            "maturidade": "NÃO CLASSIFICADA",
+            "prioridade": "NÃO CLASSIFICADA",
+            "recomendacao": "Realizar contato com base nas informações coletadas.",
+        }
 
 
 # Persistência do lead no Supabase
@@ -331,6 +503,20 @@ def enviar_whatsapp(relatorio, tenant_id="RA_IMOBILIARIA"):
 async def processar_chatbot(mensagem, session_id, tenant_id="RA_IMOBILIARIA"):
     mensagem = mensagem.strip()
     tenant_id = (tenant_id or "RA_IMOBILIARIA").strip().upper()
+
+    if _eh_atendimento_corretor(mensagem):
+        _remover_sessao(session_id, tenant_id)
+        numero_corretor = obter_numero_corretor(tenant_id)
+        return {
+            "mensagem": (
+                "Entendido.\n\n"
+                "O atendimento entre corretores será realizado diretamente "
+                "pela equipe responsável."
+            ),
+            "tipo_atendimento": "corretor_parceiro",
+            "encaminhamento": "atendimento_humano",
+            "link_whatsapp": f"https://wa.me/{numero_corretor}",
+        }
 
     sessao = _carregar_sessao(session_id, tenant_id)
 
@@ -714,15 +900,31 @@ async def processar_chatbot(mensagem, session_id, tenant_id="RA_IMOBILIARIA"):
     if etapa == "whatsapp":
         whatsapp = re.sub(r"\D", "", mensagem)
         sessao["whatsapp"] = whatsapp
-        perfil = classificar_perfil(sessao)
-        score = calcular_score(sessao)
+        qualificacao = _qualificar_para_relatorio(sessao, eh_locacao)
+        completude = _calcular_completude_qualificacao(sessao, eh_locacao)
+        sinais_positivos = _gerar_sinais_positivos(sessao, eh_locacao)
+        pontos_atencao = _gerar_pontos_atencao(sessao, eh_locacao)
+        score = qualificacao.get("score")
+        fallback_qualificacao = qualificacao.get("fallback", False)
 
         linhas_relatorio = [
             "",
-            "NOVO LEAD IMOBILIÁRIO",
+            "QUALIFICAÇÃO DO LEAD",
             "",
             "Perfil:",
-            str(perfil),
+            str(qualificacao.get("perfil_cluster", classificar_perfil(sessao))),
+            "",
+            "Intenção:",
+            str(qualificacao.get("intencao_compra", "Não informada")),
+            "",
+            "Maturidade:",
+            str(qualificacao.get("maturidade", "Não informada")),
+            "",
+            "Completude:",
+            completude,
+            "",
+            "Prioridade comercial:",
+            str(qualificacao.get("prioridade", "Não informada")),
             "",
             "Objetivo:",
             str(sessao.get("objetivo", "Não informado")),
@@ -813,11 +1015,42 @@ async def processar_chatbot(mensagem, session_id, tenant_id="RA_IMOBILIARIA"):
                 "Permuta:",
                 "Sim" if sessao.get("permuta") else "Não",
                 "",
+                "Sinais positivos:",
+            ]
+        )
+
+        if sinais_positivos:
+            linhas_relatorio.extend([f"- {sinal}" for sinal in sinais_positivos])
+        else:
+            linhas_relatorio.append("- Nenhum sinal positivo identificado.")
+
+        linhas_relatorio.extend(["", "Pontos de atenção:"])
+
+        if pontos_atencao:
+            linhas_relatorio.extend([f"- {ponto}" for ponto in pontos_atencao])
+        else:
+            linhas_relatorio.append("- Nenhum ponto de atenção identificado.")
+
+        linhas_relatorio.extend(
+            [
+                "",
+                "Ação recomendada:",
+                str(
+                    qualificacao.get(
+                        "recomendacao",
+                        "Realizar contato com base nos dados informados.",
+                    )
+                ),
+                "",
                 "WhatsApp do cliente:",
                 whatsapp,
                 "",
-                "Score do lead:",
-                str(score),
+                (
+                    "Score técnico legado: "
+                    f"{score}"
+                    if fallback_qualificacao
+                    else f"Score técnico: {score}/100"
+                ),
             ]
         )
 
